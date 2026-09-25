@@ -1,604 +1,600 @@
-\# MIS Invoicing System — User Guide
+# MIS Invoicing System — User Guide
 
+## 1. Introduction
 
+The **MIS Invoicing System** is a web-based application developed as part of the **IT Vedant Internship Project**.
 
-\## 1. Introduction
+The system provides functionality for managing:
 
+* Users
+* Clients
+* Invoices
+* Payments
+* Estimates
+* Groups
+* Chains
+* Brands
+* Subzones
 
+The application uses a frontend-backend architecture with a MySQL database.
 
-The MIS Invoicing System is a web-based application developed for managing users, clients, invoices, estimates, payments, and other business information.
+This guide explains how to access, run, and use the application.
 
+---
 
+## 2. Technology Used
 
-This guide explains how an end user can run and use the system.
+| Component        | Technology            |
+| ---------------- | --------------------- |
+| Frontend         | HTML, CSS, JavaScript |
+| Backend          | Java, Spring Boot     |
+| Database         | MySQL                 |
+| API              | REST API              |
+| Build Tool       | Maven                 |
+| Deployment       | Railway               |
+| Database Hosting | Aiven MySQL           |
+| Version Control  | Git & GitHub          |
 
+---
 
+# 3. Live Application
 
-\---
+The application is deployed and available online.
 
-
-
-\## 2. System Requirements
-
-
-
-The following software is required:
-
-
-
-\* Windows operating system
-
-\* Java JDK
-
-\* Maven
-
-\* MySQL
-
-\* Python
-
-\* Modern web browser such as Google Chrome or Microsoft Edge
-
-
-
-\---
-
-
-
-\## 3. Starting the System
-
-
-
-The application has two parts:
-
-
-
-1\. Backend — Spring Boot
-
-2\. Frontend — HTML, CSS and JavaScript
-
-
-
-Both the backend and frontend must be running to use the complete application.
-
-
-
-\---
-
-
-
-\## 4. Starting the Backend
-
-
-
-Open Command Prompt and navigate to the backend folder.
-
-
-
-Run:
-
-
-
-```cmd
-
-cd /d "D:\\Intership task\\IT Vedent\\MIS-Invoicing-System\\backend"
-
-```
-
-
-
-Start the Spring Boot application:
-
-
-
-```cmd
-
-mvn spring-boot:run
-
-```
-
-
-
-After successful startup, the backend will be available at:
-
-
+### Live Frontend
 
 ```text
-
-http://localhost:8080
-
+https://frontend-production-267e4.up.railway.app
 ```
 
+Open the above URL in a modern web browser to access the application.
 
-
-\---
-
-
-
-\## 5. Starting the Frontend
-
-
-
-Open another Command Prompt window.
-
-
-
-Navigate to the frontend folder:
-
-
-
-```cmd
-
-cd /d "D:\\Intership task\\IT Vedent\\MIS-Invoicing-System\\frontend"
-
-```
-
-
-
-Start the frontend server:
-
-
-
-```cmd
-
-python -m http.server 5500
-
-```
-
-
-
-Open the application in a web browser:
-
-
+### Live Backend
 
 ```text
-
-http://localhost:5500
-
+https://mis-invoicing-system-production-c653.up.railway.app
 ```
 
+### Live Client API
 
+```text
+https://mis-invoicing-system-production-c653.up.railway.app/api/v1/clients
+```
 
-\---
+### GitHub Repository
 
+```text
+https://github.com/manishabhar280/MIS-Invoicing-System-ITVedant
+```
 
+---
 
-\## 6. User Registration
+# 4. System Requirements
 
+For local development, the following software is required:
 
+* Windows operating system
+* Java JDK
+* Maven
+* MySQL
+* Python
+* Git
+* Modern web browser such as Google Chrome or Microsoft Edge
+* Visual Studio Code or another suitable IDE
 
-1\. Open the application in the browser.
+For using the **live application**, Java, Maven, MySQL, and Python are not required on the user's computer. A modern web browser and internet connection are sufficient.
 
-2\. On the login page, select \*\*Register Here\*\*.
+---
 
-3\. Enter the required user information.
+# 5. Application Architecture
 
-4\. Select the appropriate user role.
+The application follows this architecture:
 
-5\. Submit the registration form.
+```text
+User
+  |
+  v
+Railway Frontend
+  |
+  | REST API
+  v
+Railway Spring Boot Backend
+  |
+  | JDBC / JPA
+  v
+Aiven MySQL Database
+```
 
-6\. After successful registration, return to the login page.
+The frontend and backend are deployed as separate services.
 
+The backend communicates with the production MySQL database hosted on Aiven.
 
+---
 
-\---
+# 6. Using the Live Application
 
+## Step 1 — Open the Application
 
+Open a modern web browser.
 
-\## 7. User Login
+Visit:
 
+```text
+https://frontend-production-267e4.up.railway.app
+```
 
+The application login page will open.
 
-1\. Open the login page.
+---
 
-2\. Enter the registered email/username.
+# 7. User Registration
 
-3\. Enter the password.
+To register a new user:
 
-4\. Click \*\*Sign In\*\*.
+1. Open the application.
+2. Select **Register Here**.
+3. Enter the required user information.
+4. Select the appropriate user role.
+5. Submit the registration form.
+6. After successful registration, return to the login page.
 
-5\. After successful authentication, the user can access the available features according to their role.
+Use valid information while creating an account.
 
+---
 
+# 8. User Login
 
-\---
+To log in:
 
+1. Open the login page.
+2. Enter the registered email/username.
+3. Enter the password.
+4. Click **Sign In**.
+5. After successful authentication, the user will be able to access the available features according to their assigned role.
 
+---
 
-\## 8. User Roles
-
-
+# 9. User Roles
 
 The system supports role-based access.
 
+## Admin
 
+Admin users can access administrative and management functionality such as:
 
-\### Admin
+* User management
+* Client management
+* Invoice management
+* Payment management
+* Other available management modules
 
+## Sales Person / Non-Admin
 
+Sales users have restricted access based on their assigned permissions.
 
-Admin users can manage administrative functions such as:
+They can use the invoicing-related functionality available to their role.
 
+---
 
+# 10. Client Management
 
-\* Users
-
-\* Clients
-
-\* Invoices
-
-\* Payments
-
-\* Other available management modules
-
-
-
-\### Sales Person / Non-Admin
-
-
-
-Sales users have restricted access based on their assigned permissions and can use the invoicing-related functionality provided to them.
-
-
-
-\---
-
-
-
-\## 9. Client Management
-
-
-
-The client module is used to maintain customer/client information.
-
-
+The Client module is used to maintain customer/client information.
 
 Users with appropriate access can:
 
+* Add a new client
+* View the client list
+* View client details
+* Manage client information
 
-
-\* Add a new client
-
-\* View the client list
-
-\* View client details
-
-\* Manage client information
-
-
-
-The client REST API is:
-
-
+### Client API
 
 ```text
-
-http://localhost:8080/api/v1/clients
-
+GET https://mis-invoicing-system-production-c653.up.railway.app/api/v1/clients
 ```
 
+The API returns the client information stored in the database.
 
+---
 
-\---
+# 11. Adding a New Client
 
+To add a client:
 
+1. Open the Client section.
+2. Select **Add New Client**.
+3. Enter the required client information.
+4. Enter organization details if required.
+5. Enter GST information if required.
+6. Click **Save Client**.
+7. The client will be stored in the database.
+8. Refreshing the client list should display the newly added client.
 
-\## 10. Invoice Management
+---
 
+# 12. Invoice Management
 
-
-The invoice module is used to create and manage invoices.
-
-
-
-Typical operations include:
-
-
-
-\* Creating an invoice
-
-\* Adding invoice items
-
-\* Viewing invoices
-
-\* Checking invoice status
-
-\* Managing invoice information
-
-
-
-\---
-
-
-
-\## 11. Payment Management
-
-
-
-The payment module is used to record and manage invoice payments.
-
-
+The Invoice module is used to create and manage invoices.
 
 Typical operations include:
 
+* Creating an invoice
+* Selecting a client
+* Adding invoice items
+* Entering invoice information
+* Viewing invoices
+* Checking invoice status
+* Managing invoice information
 
+To create an invoice:
 
-\* Recording payments
+1. Open the Invoice section.
+2. Select the required client.
+3. Add the required invoice items.
+4. Enter the necessary invoice information.
+5. Generate/save the invoice.
+6. Verify the invoice in the invoice list.
 
-\* Viewing payment information
+---
 
-\* Checking payment status
+# 13. Payment Management
 
-\* Updating payment-related information
+The Payment module is used to record and manage invoice payments.
 
+Typical operations include:
 
+* Recording payments
+* Viewing payment information
+* Checking payment status
+* Updating payment-related information
 
-\---
+To process a payment:
 
+1. Open the Payment section.
+2. Select the required invoice.
+3. Enter the payment information.
+4. Submit the payment.
+5. Verify the updated payment/invoice status.
 
+---
 
-\## 12. Estimates
+# 14. Estimates
 
+The Estimate module can be used to manage estimates before generating invoices.
 
+Users with appropriate access can:
 
-The estimate module can be used to manage estimates before generating invoices.
+* Create estimates
+* View estimates
+* Manage estimate information
 
+Estimates can be used as a preliminary step before invoice generation.
 
+---
 
-Users can create and manage estimate information according to their assigned access.
+# 15. Other Modules
 
+The application also contains business management modules for:
 
-
-\---
-
-
-
-\## 13. Other Modules
-
-
-
-The system also contains business management modules for:
-
-
-
-\* Groups
-
-\* Chains
-
-\* Brands
-
-\* Subzones
-
-
+* Groups
+* Chains
+* Brands
+* Subzones
 
 These modules help organize business and client-related information.
 
+---
 
-
-\---
-
-
-
-\## 14. Logout
-
-
+# 16. Logout
 
 After completing work:
 
+1. Open the user/account menu if available.
+2. Select **Logout**.
+3. The current session will be ended.
+4. The user can log in again when required.
 
+For security, always log out when using a shared computer.
 
-1\. Open the user/account menu if available.
+---
 
-2\. Select \*\*Logout\*\*.
+# 17. Local Development Setup
 
-3\. The current session will be ended.
+The application can also be run locally for development and testing.
 
-4\. The user can log in again when required.
+## Backend
 
+Navigate to the backend folder:
 
-
-\---
-
-
-
-\## 15. Troubleshooting
-
-
-
-\### Backend does not start
-
-
-
-Check that:
-
-
-
-\* Java is installed correctly.
-
-\* Maven is installed correctly.
-
-\* MySQL is running.
-
-\* Database credentials are correctly configured.
-
-\* Port `8080` is not being used by another application.
-
-
-
-\### Frontend does not open
-
-
-
-Check that:
-
-
-
-\* Python is installed.
-
-\* The frontend server is running.
-
-\* Port `5500` is available.
-
-\* The correct URL is being used:
-
-
-
-```text
-
-http://localhost:5500
-
+```cmd
+cd /d "D:\Intership task\IT Vedent\MIS-Invoicing-System\backend"
 ```
 
+Start the Spring Boot application:
 
+```cmd
+mvn spring-boot:run
+```
 
-\### Database connection error
+The local backend runs at:
 
+```text
+http://localhost:8080
+```
 
+---
+
+# 18. Database Configuration for Local Development
+
+The backend uses environment variables for database configuration.
+
+Example:
+
+```text
+DB_USERNAME=root
+DB_PASSWORD=your_password
+DB_URL=jdbc:mysql://localhost:3306/ims_db
+```
+
+The actual database username and password should be configured by the developer.
+
+### Important
+
+Never upload:
+
+* Database passwords
+* `.env` files
+* API keys
+* Other sensitive credentials
+
+to GitHub.
+
+---
+
+# 19. Starting the Frontend Locally
+
+Open another Command Prompt window.
+
+Navigate to the frontend folder:
+
+```cmd
+cd /d "D:\Intership task\IT Vedent\MIS-Invoicing-System\frontend"
+```
+
+Start the frontend server:
+
+```cmd
+python -m http.server 5500
+```
+
+Open:
+
+```text
+http://localhost:5500
+```
+
+---
+
+# 20. Local URLs
+
+### Frontend
+
+```text
+http://localhost:5500
+```
+
+### Backend
+
+```text
+http://localhost:8080
+```
+
+### Client API
+
+```text
+http://localhost:8080/api/v1/clients
+```
+
+---
+
+# 21. Production Database
+
+The deployed application uses **Aiven MySQL** as its production database.
+
+Database credentials are stored securely as environment variables in the Railway backend service.
+
+Database passwords are not stored in the GitHub repository.
+
+---
+
+# 22. Testing
+
+The application has been tested in both local and production environments.
+
+### Backend Testing
+
+* Spring Boot startup
+* MySQL database connection
+* REST API functionality
+* Client API
+* Invoice functionality
+* Payment functionality
+
+### Frontend Testing
+
+* Application loading
+* Client creation
+* Invoice generation
+* Payment processing
+* Frontend-to-backend communication
+* Data persistence
+
+### Production Testing
+
+The live Railway frontend was tested with the deployed Spring Boot backend.
+
+The following operations were successfully tested:
+
+* Adding clients
+* Retrieving clients
+* Generating invoices
+* Processing payments
+* Refreshing the application and verifying stored data
+
+---
+
+# 23. Troubleshooting
+
+## Backend Does Not Start
 
 Check that:
 
+* Java is installed correctly.
+* Maven is installed correctly.
+* Database configuration is correct.
+* Required environment variables are available.
+* Port `8080` is not being used by another application.
 
+---
 
-\* MySQL server is running.
+## Frontend Does Not Open Locally
 
-\* Database `ims\_db` exists.
+Check that:
 
-\* Database username and password are correctly configured.
+* Python is installed.
+* The frontend server is running.
+* Port `5500` is available.
+* The correct URL is being used.
 
-\* Environment variables are available to the backend.
+```text
+http://localhost:5500
+```
 
+---
 
+## Database Connection Error
+
+Check that:
+
+* MySQL is running for local development.
+* The database exists.
+* Database username is correct.
+* Database password is correct.
+* `DB_URL` is correct.
+* Required environment variables are available.
 
 Do not share database passwords publicly.
 
+---
 
+## Network Error in Live Application
 
-\---
+If the live frontend shows a network error:
 
+1. Check the live backend URL.
+2. Verify that the backend deployment is running.
+3. Check the browser Developer Tools console.
+4. Check the Railway deployment logs.
+5. Verify that the frontend is using the correct backend API URL.
 
-
-\## 16. Important URLs
-
-
-
-\### Frontend
-
-
-
-```text
-
-http://localhost:5500
-
-```
-
-
-
-\### Backend
-
-
+Live backend:
 
 ```text
-
-http://localhost:8080
-
+https://mis-invoicing-system-production-c653.up.railway.app
 ```
 
+---
 
+# 24. Security Guidelines
 
-\### Client API
+Follow these security practices:
 
+* Never share database passwords.
+* Never upload `.env` files to GitHub.
+* Use environment variables for sensitive configuration.
+* Do not commit API keys or secrets.
+* Always log out after completing work on a shared computer.
+* Use appropriate user roles and permissions.
+* Keep production credentials separate from source code.
 
+---
+
+# 25. Support and Troubleshooting Resources
+
+For technical issues, check:
+
+1. Spring Boot backend console.
+2. Railway deployment logs.
+3. Browser Developer Tools.
+4. Database connection status.
+5. GitHub repository source code.
+6. Project documentation.
+
+---
+
+# 26. Project Documentation
+
+Additional project documentation is available in the `docs` directory.
 
 ```text
-
-http://localhost:8080/api/v1/clients
-
+docs/
+└── USER_GUIDE.md
 ```
 
+The main project README is available in the project root:
 
+```text
+README.md
+```
 
-\---
+---
 
-
-
-\## 17. Security Guidelines
-
-
-
-\* Never share database passwords.
-
-\* Never upload `.env` files to GitHub.
-
-\* Use environment variables for sensitive configuration.
-
-\* Always log out after completing work on a shared computer.
-
-\* Use appropriate user roles and permissions.
-
-
-
-\---
-
-
-
-\## 18. Support
-
-
-
-For project-related technical issues, check:
-
-
-
-1\. Backend console for Spring Boot errors.
-
-2\. Browser Developer Tools for frontend errors.
-
-3\. MySQL server status.
-
-4\. GitHub repository source code and documentation.
-
-
-
-\---
-
-
-
-\## 19. Project Repository
-
-
+# 27. Project Repository
 
 GitHub Repository:
 
-
-
 ```text
-
 https://github.com/manishabhar280/MIS-Invoicing-System-ITVedant
-
 ```
 
+---
 
+# 28. Live Application Links
 
-\---
+### Frontend
 
+```text
+https://frontend-production-267e4.up.railway.app
+```
 
+### Backend
 
-\## 20. Project Information
+```text
+https://mis-invoicing-system-production-c653.up.railway.app
+```
 
+### Client API
 
+```text
+https://mis-invoicing-system-production-c653.up.railway.app/api/v1/clients
+```
 
-\*\*Project:\*\* MIS Invoicing System
+---
 
+# 29. Project Information
 
+**Project:** MIS Invoicing System
 
-\*\*Organization/Program:\*\* IT Vedant Internship
+**Organization/Program:** IT Vedant Internship
 
+**Developer:** Manisha Bhardwaj
 
+**Technology:** HTML, CSS, JavaScript, Java Spring Boot, MySQL
 
-\*\*Developer:\*\* Manisha Bhardwaj
+**Deployment:** Railway
 
+**Production Database:** Aiven MySQL
 
+**Version Control:** Git & GitHub
 
-\*\*Technology:\*\* HTML, CSS, JavaScript, Java Spring Boot, MySQL
-
-
-
+**Project Status:** Deployed and Tested

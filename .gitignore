@@ -1,0 +1,24 @@
+# Java / Maven
+target/
+*.class
+
+# Spring Boot
+*.log
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Java crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# OS
+.DS_Store
+Thumbs.db

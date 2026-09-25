@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8080/api/v1";
+const API_BASE = "https://mis-invoicing-system-production-c653.up.railway.app/api/v1";
 let allInvoicesCache = [];
 
 // Helper Function: Show Custom Toast Notification

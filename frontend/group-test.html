@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group API Test</title>
+</head>
+
+<body>
+
+    <h1>Group Management API Test</h1>
+
+    <button onclick="getGroups()">Get All Groups</button>
+
+    <button onclick="addGroup()">Add Persian Darbar</button>
+
+    <button onclick="updateGroup()">Update Group</button>
+
+    <button onclick="deactivateGroup()">Deactivate Group</button>
+
+    <button onclick="activateGroup()">Activate Group</button>
+
+    <h3>Response:</h3>
+
+    <pre id="result">Click a button to test the API.</pre>
+
+
+    <script>
+
+        // Get all groups
+        async function getGroups() {
+
+            try {
+
+                const response = await fetch(
+                    "http://localhost:8080/api/groups"
+                );
+
+                const data = await response.json();
+
+                document.getElementById("result").textContent =
+                    JSON.stringify(data, null, 2);
+
+            } catch (error) {
+
+                document.getElementById("result").textContent =
+                    "Error: " + error.message;
+            }
+        }
+
+
+        // Add group
+        async function addGroup() {
+
+            try {
+
+                const response = await fetch(
+                    "http://localhost:8080/api/groups",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+                            groupName: "Persian Darbar"
+                        })
+                    }
+                );
+
+                const text = await response.text();
+
+                document.getElementById("result").textContent =
+                    "HTTP Status: " + response.status + "\n" +
+                    "Response: " + text;
+
+            } catch (error) {
+
+                document.getElementById("result").textContent =
+                    "Error: " + error.message;
+            }
+        }
+
+
+        // Update group
+        async function updateGroup() {
+
+            try {
+
+                const response = await fetch(
+                    "http://localhost:8080/api/groups/1",
+                    {
+                        method: "PUT",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+                            groupName: "Persian Darbar Updated"
+                        })
+                    }
+                );
+
+                const text = await response.text();
+
+                document.getElementById("result").textContent =
+                    "HTTP Status: " + response.status + "\n" +
+                    "Response: " + text;
+
+            } catch (error) {
+
+                document.getElementById("result").textContent =
+                    "Error: " + error.message;
+            }
+        }
+
+        // Deactivate group
+async function deactivateGroup() {
+
+    try {
+
+        const response = await fetch(
+            "http://localhost:8080/api/groups/1",
+            {
+                method: "DELETE"
+            }
+        );
+
+        const text = await response.text();
+
+        document.getElementById("result").textContent =
+            "HTTP Status: " + response.status + "\n" +
+            "Response: " + text;
+
+    } catch (error) {
+
+        document.getElementById("result").textContent =
+            "Error: " + error.message;
+    }
+}
+
+  // Activate group
+async function activateGroup() {
+
+    try {
+
+        const response = await fetch(
+            "http://localhost:8080/api/groups/1/activate",
+            {
+                method: "PUT"
+            }
+        );
+
+        const text = await response.text();
+
+        document.getElementById("result").textContent =
+            "HTTP Status: " + response.status + "\n" +
+            "Response: " + text;
+
+    } catch (error) {
+
+        document.getElementById("result").textContent =
+            "Error: " + error.message;
+    }
+}
+
+
+    </script>
+
+</body>
+</html>

@@ -17,7 +17,7 @@ public class Group {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "group_id")
+    @Column(name = "group_id", columnDefinition = "INT")
     private Long groupId;
 
     @Column(name = "group_name", nullable = false, unique = true, length = 255)
@@ -33,10 +33,6 @@ public class Group {
     private LocalDateTime updatedAt;
 
     @ManyToOne
-    @JoinColumn(name = "chain_id")
-    private Chain chain;
-
-    @ManyToOne
     @JoinColumn(name = "subzone_id")
     private Subzone subzone;
 
@@ -45,13 +41,12 @@ public class Group {
 
     public Group(Long groupId, String groupName, Boolean isActive,
                  LocalDateTime createdAt, LocalDateTime updatedAt,
-                 Chain chain, Subzone subzone) {
+                 Subzone subzone) {
         this.groupId = groupId;
         this.groupName = groupName;
         this.isActive = isActive;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
-        this.chain = chain;
         this.subzone = subzone;
     }
 
@@ -112,14 +107,6 @@ public class Group {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
-    }
-
-    public Chain getChain() {
-        return chain;
-    }
-
-    public void setChain(Chain chain) {
-        this.chain = chain;
     }
 
     public Subzone getSubzone() {

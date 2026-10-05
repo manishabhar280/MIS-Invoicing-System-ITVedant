@@ -16,18 +16,22 @@ CREATE TABLE IF NOT EXISTS subzones (
     subzone_name VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS chains (
-    chain_id INT AUTO_INCREMENT PRIMARY KEY,
-    chain_name VARCHAR(100) NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS `groups` (
     group_id INT AUTO_INCREMENT PRIMARY KEY,
     group_name VARCHAR(100) NOT NULL,
-    chain_id INT,
     subzone_id INT,
-    FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
     FOREIGN KEY (subzone_id) REFERENCES subzones(subzone_id)
+);
+
+CREATE TABLE IF NOT EXISTS chains (
+    chain_id INT AUTO_INCREMENT PRIMARY KEY,
+    company_name VARCHAR(255) NOT NULL,
+    gstn_no VARCHAR(15) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    group_id INT NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES `groups`(group_id)
 );
 
 CREATE TABLE IF NOT EXISTS brands (

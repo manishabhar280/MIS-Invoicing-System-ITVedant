@@ -1,9 +1,14 @@
 const API_BASE = "https://mis-invoicing-system-production-c653.up.railway.app/api/v1";
 
-// Group API - Local backend testing
-const GROUP_API = "http://localhost:8080/api/groups";
+const LOCAL_API_BASE = "http://localhost:8080/api";
+const GROUP_API = `${LOCAL_API_BASE}/groups`;
+const CHAIN_API = `${LOCAL_API_BASE}/chains`;
 
 let allInvoicesCache = [];
+let chainGroupOptions = [];
+let chainsCache = [];
+let editingChainId = null;
+let isSavingChain = false;
 
 
 // Helper Function: Show Custom Toast Notification
@@ -217,6 +222,8 @@ function switchTab(tabName) {
 
         document.getElementById('page-title')
             .innerText = "Dashboard Overview";
+        document.getElementById('page-subtitle')
+            .innerText = "Manage clients, invoices, and payment tracking.";
 
     } else {
 
@@ -225,9 +232,15 @@ function switchTab(tabName) {
 
         document.getElementById('page-title')
             .innerText =
-                tabName.charAt(0).toUpperCase() +
-                tabName.slice(1) +
-                " Management";
+                tabName === 'chains'
+                    ? "Customer / Chain Management"
+                    : tabName.charAt(0).toUpperCase() +
+                      tabName.slice(1) +
+                      " Management";
+        document.getElementById('page-subtitle')
+            .innerText = tabName === 'chains'
+                ? "Manage company details, GSTN registration, and group assignments."
+                : "Manage your " + tabName + " records.";
     }
 
     const activeNav =
@@ -242,6 +255,10 @@ function switchTab(tabName) {
     // Load groups when Groups tab is opened
     if (tabName === 'groups') {
         loadGroups();
+    }
+
+    if (tabName === 'chains') {
+        loadChainManagement();
     }
 }
 
@@ -265,6 +282,8 @@ async function loadGroups() {
         const groups = await response.json();
 
         console.log("Groups:", groups);
+        chainGroupOptions = groups;
+        populateChainGroupSelects(groups);
 
         // If Group table exists in main dashboard
         const tbody =
@@ -327,7 +346,6 @@ async function loadGroups() {
                                     </button>
                                   `
                             }
-
                         </td>
 
                     </tr>
@@ -348,6 +366,45 @@ async function loadGroups() {
         );
 
         return [];
+    }
+}
+
+
+function populateChainGroupSelects(groups) {
+
+    const filter = document.getElementById('chainGroupFilter');
+    const formSelect = document.getElementById('chainGroupId');
+
+    if (filter) {
+        const selectedGroup = filter.value;
+        filter.replaceChildren(new Option('All Groups', ''));
+
+        groups.forEach(group => {
+            filter.add(new Option(
+                `${group.groupName} (#${group.groupId})`,
+                String(group.groupId)
+            ));
+        });
+
+        if (groups.some(group => String(group.groupId) === selectedGroup)) {
+            filter.value = selectedGroup;
+        }
+    }
+
+    if (formSelect) {
+        const selectedGroup = formSelect.value;
+        formSelect.replaceChildren(new Option('Select a group', ''));
+
+        groups.forEach(group => {
+            formSelect.add(new Option(
+                `${group.groupName} (#${group.groupId})`,
+                String(group.groupId)
+            ));
+        });
+
+        if (groups.some(group => String(group.groupId) === selectedGroup)) {
+            formSelect.value = selectedGroup;
+        }
     }
 }
 
@@ -674,6 +731,330 @@ async function loadInactiveGroups() {
 
 // ======================================================
 // END GROUP MANAGEMENT
+// ======================================================
+
+
+// ======================================================
+// CUSTOMER / CHAIN MANAGEMENT
+// ======================================================
+
+async function loadChainManagement() {
+    await Promise.all([loadGroups(), loadChains()]);
+}
+
+
+async function loadChains() {
+    const tbody = document.getElementById('chainsTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="7" class="px-5 py-10 text-center text-slate-400">
+                <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading companies...
+            </td>
+        </tr>
+    `;
+
+    const selectedGroup = document.getElementById('chainGroupFilter')?.value;
+    const url = selectedGroup
+        ? `${CHAIN_API}/group/${encodeURIComponent(selectedGroup)}`
+        : CHAIN_API;
+
+    try {
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                showToast("Group Not Found", "The selected group could not be found.", "error");
+            } else {
+                showToast("Unable to Load Companies", "Please try again in a moment.", "error");
+            }
+            renderChainEmptyState(tbody, "Companies could not be loaded. Please try again.");
+            return;
+        }
+
+        chainsCache = await response.json();
+        renderChains(tbody, chainsCache);
+    } catch (error) {
+        console.error("Chains Fetch Error:", error);
+        renderChainEmptyState(tbody, "Companies could not be loaded. Please try again.");
+        showToast("Connection Error", "Unable to connect to the company service.", "error");
+    }
+}
+
+
+function renderChainEmptyState(tbody, message) {
+    tbody.replaceChildren();
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 7;
+    cell.className = "px-5 py-10 text-center text-slate-400";
+    cell.textContent = message;
+    row.appendChild(cell);
+    tbody.appendChild(row);
+}
+
+
+function renderChains(tbody, chains) {
+    tbody.replaceChildren();
+
+    if (!chains.length) {
+        const groupFilter = document.getElementById('chainGroupFilter')?.value;
+        renderChainEmptyState(
+            tbody,
+            groupFilter
+                ? "No companies/chains found for this group."
+                : "No companies/chains found."
+        );
+        return;
+    }
+
+    chains.forEach(chain => {
+        const row = document.createElement('tr');
+        row.className = "transition hover:bg-slate-50";
+
+        const values = [
+            { text: `#${chain.chainId}`, className: "px-5 py-4 font-bold text-indigo-600" },
+            { text: chain.companyName || "—", className: "px-5 py-4 font-semibold text-slate-800" },
+            { text: chain.gstnNo || "—", className: "px-5 py-4 font-mono text-slate-600" },
+            {
+                text: chain.group
+                    ? `${chain.group.groupName || "Group"} (#${chain.group.groupId})`
+                    : "—",
+                className: "px-5 py-4 text-slate-600"
+            },
+            { text: "", className: "px-5 py-4" },
+            { text: formatChainDate(chain.createdAt), className: "px-5 py-4 whitespace-nowrap text-slate-600" },
+            { text: "", className: "px-5 py-4 text-right whitespace-nowrap" }
+        ];
+
+        values.forEach((value, index) => {
+            const cell = document.createElement('td');
+            cell.className = value.className;
+            if (index !== 4 && index !== 6) {
+                cell.textContent = value.text;
+            }
+            row.appendChild(cell);
+        });
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = chain.isActive
+            ? "inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
+            : "inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600";
+        statusBadge.textContent = chain.isActive ? "Active" : "Inactive";
+        row.children[4].appendChild(statusBadge);
+
+        const editButton = document.createElement('button');
+        editButton.type = "button";
+        editButton.className = "mr-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100";
+        editButton.textContent = "Edit";
+        editButton.addEventListener('click', () => editChain(chain.chainId));
+        row.children[6].appendChild(editButton);
+
+        const statusButton = document.createElement('button');
+        statusButton.type = "button";
+        statusButton.className = chain.isActive
+            ? "rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+            : "rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100";
+        statusButton.textContent = chain.isActive ? "Deactivate" : "Activate";
+        statusButton.addEventListener('click', () => changeChainStatus(chain));
+        row.children[6].appendChild(statusButton);
+
+        tbody.appendChild(row);
+    });
+}
+
+
+function formatChainDate(value) {
+    if (!value) return "—";
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+        ? "—"
+        : new Intl.DateTimeFormat(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        }).format(date);
+}
+
+
+async function openChainModal(chain = null) {
+    if (!chainGroupOptions.length) {
+        await loadGroups();
+    }
+
+    if (!chainGroupOptions.length) {
+        showToast("Groups Unavailable", "Load a group before adding a company.", "error");
+        return;
+    }
+
+    editingChainId = chain ? chain.chainId : null;
+    document.getElementById('chainModalTitle').textContent =
+        editingChainId ? "Edit Chain / Company" : "Add Chain / Company";
+    document.getElementById('chainCompanyName').value = chain?.companyName || "";
+    document.getElementById('chainGstnNo').value = chain?.gstnNo || "";
+    document.getElementById('chainGroupId').value = chain?.group?.groupId
+        ? String(chain.group.groupId)
+        : "";
+    document.getElementById('chainSubmitButton').innerHTML = editingChainId
+        ? '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Changes'
+        : '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Company';
+    document.getElementById('chainModal').classList.remove('hidden');
+    document.getElementById('chainCompanyName').focus();
+}
+
+
+function closeChainModal() {
+    if (isSavingChain) return;
+
+    document.getElementById('chainModal').classList.add('hidden');
+    document.getElementById('chainForm').reset();
+    editingChainId = null;
+}
+
+
+async function editChain(chainId) {
+    let chain = chainsCache.find(item => Number(item.chainId) === Number(chainId));
+
+    if (!chain) {
+        try {
+            const response = await fetch(`${CHAIN_API}/${encodeURIComponent(chainId)}`);
+            if (!response.ok) {
+                showChainApiError(response.status, "edit");
+                return;
+            }
+            chain = await response.json();
+        } catch (error) {
+            console.error("Chain Detail Fetch Error:", error);
+            showToast("Connection Error", "Unable to load this company.", "error");
+            return;
+        }
+    }
+
+    await openChainModal(chain);
+}
+
+
+async function submitChainForm(event) {
+    event.preventDefault();
+    if (isSavingChain) return;
+
+    const companyName = document.getElementById('chainCompanyName').value.trim();
+    const gstnNo = document.getElementById('chainGstnNo').value.toUpperCase();
+    const groupId = document.getElementById('chainGroupId').value;
+
+    if (!companyName) {
+        showToast("Validation Error", "Company name is required.", "error");
+        return;
+    }
+    if (!gstnNo) {
+        showToast("Validation Error", "GSTN is required.", "error");
+        return;
+    }
+    if (gstnNo.length !== 15
+            || !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9]Z[A-Z0-9]$/.test(gstnNo)) {
+        showToast("Validation Error", "Enter a valid 15-character GSTN.", "error");
+        return;
+    }
+    if (!groupId) {
+        showToast("Validation Error", "Select a group.", "error");
+        return;
+    }
+
+    const payload = { companyName, gstnNo, groupId: Number(groupId) };
+    const isEdit = editingChainId !== null;
+    const submitButton = document.getElementById('chainSubmitButton');
+    isSavingChain = true;
+    submitButton.disabled = true;
+    submitButton.classList.add('cursor-not-allowed', 'opacity-60');
+    submitButton.textContent = isEdit ? "Saving changes..." : "Saving company...";
+
+    try {
+        const response = await fetch(
+            isEdit ? `${CHAIN_API}/${encodeURIComponent(editingChainId)}` : CHAIN_API,
+            {
+                method: isEdit ? "PUT" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }
+        );
+
+        if (!response.ok) {
+            showChainApiError(response.status, isEdit ? "update" : "create");
+            return;
+        }
+
+        showToast(
+            "Success",
+            isEdit ? "Company updated successfully." : "Company added successfully."
+        );
+        document.getElementById('chainModal').classList.add('hidden');
+        document.getElementById('chainForm').reset();
+        editingChainId = null;
+        await loadChains();
+    } catch (error) {
+        console.error("Save Chain Error:", error);
+        showToast("Connection Error", "Unable to save the company. Please try again.", "error");
+    } finally {
+        isSavingChain = false;
+        submitButton.disabled = false;
+        submitButton.classList.remove('cursor-not-allowed', 'opacity-60');
+        submitButton.innerHTML = editingChainId
+            ? '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Changes'
+            : '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Company';
+    }
+}
+
+
+function showChainApiError(status, operation) {
+    if (status === 400) {
+        showToast("Check Details", "Please check the company name, GSTN and group selection.", "error");
+    } else if (status === 409) {
+        showToast("GSTN Already Exists", "A company with this GSTN is already registered.", "error");
+    } else if (status === 404) {
+        showToast(
+            "Not Found",
+            operation === "edit"
+                ? "This company could not be found. Refresh the list and try again."
+                : "The selected group or company could not be found.",
+            "error"
+        );
+    } else {
+        showToast("Unable to Save Company", "A server error occurred. Please try again later.", "error");
+    }
+}
+
+
+async function changeChainStatus(chain) {
+    const nextActive = !chain.isActive;
+    const action = nextActive ? "activate" : "deactivate";
+
+    if (!confirm(`Are you sure you want to ${action} ${chain.companyName}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${CHAIN_API}/${encodeURIComponent(chain.chainId)}/${action}`,
+            { method: "PATCH" }
+        );
+
+        if (!response.ok) {
+            showChainApiError(response.status, "status");
+            return;
+        }
+
+        showToast("Success", `Company ${nextActive ? "activated" : "deactivated"} successfully.`);
+        await loadChains();
+    } catch (error) {
+        console.error("Change Chain Status Error:", error);
+        showToast("Connection Error", "Unable to update company status.", "error");
+    }
+}
+
+// ======================================================
+// END CUSTOMER / CHAIN MANAGEMENT
 // ======================================================
 
 

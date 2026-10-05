@@ -79,10 +79,10 @@
     </div>
 
     <!-- ================= MAIN APP DASHBOARD ================= -->
-    <div id="app-container" class="hidden flex min-h-screen">
+    <div id="app-container" class="hidden flex min-h-screen flex-col md:flex-row">
         
         <!-- Sidebar -->
-        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between shrink-0 z-20 shadow-xl">
+        <aside class="w-full bg-slate-900 text-slate-300 flex flex-col justify-between shrink-0 z-20 shadow-xl md:w-64">
             <div>
                 <div class="h-16 flex items-center px-6 border-b border-slate-800">
                     <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center text-white me-3 font-bold text-base shadow-md shadow-indigo-500/30">
@@ -94,7 +94,7 @@
                     </div>
                 </div>
 
-                <nav class="mt-6 px-3 space-y-1.5">
+                <nav class="mt-4 grid grid-cols-2 gap-1.5 px-3 md:mt-6 md:grid-cols-1">
                     <button id="nav-dashboard" onclick="switchTab('dashboard')" class="nav-btn active-btn w-full flex items-center px-4 py-3 text-white bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl text-sm font-semibold shadow-md shadow-indigo-600/30 transition">
                         <i class="fa-solid fa-chart-line w-6"></i> Dashboard
                     </button>
@@ -116,6 +116,9 @@
 
                     Groups
                     </button>
+                    <button id="nav-chains" onclick="switchTab('chains')" class="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl text-sm font-medium transition">
+                        <i class="fa-solid fa-building w-5 mr-3"></i> Customers / Chains
+                    </button>
 
                 </nav>
             </div>
@@ -132,12 +135,12 @@
         </aside>
 
         <!-- Main Content Area -->
-        <main class="flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100">
+        <main class="min-w-0 flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100">
             <!-- Header Bar -->
-            <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-8 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+            <header class="sticky top-0 z-10 flex h-auto min-h-16 flex-col items-start justify-between gap-3 border-b border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-md sm:flex-row sm:items-center sm:gap-0 md:px-8">
                 <div>
                     <h1 id="page-title" class="text-lg font-extrabold text-slate-900 tracking-tight">Dashboard Overview</h1>
-                    <p class="text-xs text-slate-500">Manage clients, invoices, and payment tracking.</p>
+                    <p id="page-subtitle" class="text-xs text-slate-500">Manage clients, invoices, and payment tracking.</p>
                 </div>
                 <div class="flex items-center space-x-3 bg-gradient-to-r from-indigo-50 to-purple-50 px-3.5 py-1.5 rounded-full border border-indigo-100 shadow-sm">
                     <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center font-bold text-xs shadow">AD</div>
@@ -145,9 +148,9 @@
                 </div>
             </header>
 
-            <div class="p-8 max-w-7xl mx-auto space-y-8">
+            <div class="mx-auto max-w-7xl space-y-8 p-4 md:p-8">
                 <!-- VIBRANT METRIC CARDS -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+                <div class="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">
                     
                     <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-indigo-500/20 flex items-center justify-between relative overflow-hidden">
                         <div class="space-y-1 relative z-10">
@@ -318,6 +321,91 @@
 
     </div>
 
+</div>
+
+<!-- =========================================================
+     CUSTOMER / CHAIN MANAGEMENT
+========================================================= -->
+<div id="tab-chains" class="tab-content hidden space-y-6">
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-slate-800">Customer / Chain Management</h2>
+            <p class="mt-1 text-sm text-slate-500">Manage company details, GSTN registration and group assignments.</p>
+        </div>
+        <button type="button" onclick="openChainModal()" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-md transition hover:bg-indigo-700">
+            <i class="fa-solid fa-plus mr-2"></i>Add Chain / Company
+        </button>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex md:items-center md:justify-between">
+        <div>
+            <h3 class="font-bold text-slate-800">Companies and Chains</h3>
+            <p class="mt-1 text-sm text-slate-500">Review company status and manage its registration.</p>
+        </div>
+        <label for="chainGroupFilter" class="mt-4 block text-sm font-semibold text-slate-600 md:mt-0">
+            Filter by Group
+            <select id="chainGroupFilter" onchange="loadChains()" class="mt-1 block w-full min-w-52 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">All Groups</option>
+            </select>
+        </label>
+    </div>
+
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[900px] text-left">
+                <thead class="border-b border-slate-200 bg-slate-50/80 text-xs font-bold uppercase text-slate-500">
+                    <tr>
+                        <th class="px-5 py-3.5">Chain ID</th>
+                        <th class="px-5 py-3.5">Company Name</th>
+                        <th class="px-5 py-3.5">GSTN</th>
+                        <th class="px-5 py-3.5">Group</th>
+                        <th class="px-5 py-3.5">Status</th>
+                        <th class="px-5 py-3.5">Created Date</th>
+                        <th class="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="chainsTableBody" class="divide-y divide-slate-100 text-sm">
+                    <tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">Loading companies...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="chainModal" class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="chainModalTitle">
+    <div class="my-auto w-full max-w-lg rounded-2xl border border-slate-100 bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+            <div>
+                <h3 id="chainModalTitle" class="text-xl font-bold text-slate-800">Add Chain / Company</h3>
+                <p class="mt-1 text-sm text-slate-500">Enter the company registration details.</p>
+            </div>
+            <button type="button" onclick="closeChainModal()" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close form">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <form id="chainForm" onsubmit="submitChainForm(event)" class="space-y-4 p-6">
+            <div>
+                <label for="chainCompanyName" class="mb-1.5 block text-sm font-semibold text-slate-700">Company Name</label>
+                <input id="chainCompanyName" type="text" maxlength="255" required placeholder="Enter company name" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label for="chainGstnNo" class="mb-1.5 block text-sm font-semibold text-slate-700">GSTN</label>
+                <input id="chainGstnNo" type="text" maxlength="15" required autocapitalize="characters" placeholder="22AAAAA0000A1Z5" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm uppercase text-slate-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label for="chainGroupId" class="mb-1.5 block text-sm font-semibold text-slate-700">Group</label>
+                <select id="chainGroupId" required class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500">
+                    <option value="">Select a group</option>
+                </select>
+            </div>
+            <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <button type="button" onclick="closeChainModal()" class="rounded-xl border border-slate-200 px-5 py-2.5 font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button id="chainSubmitButton" type="submit" class="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-md transition hover:bg-indigo-700">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i>Save Company
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 

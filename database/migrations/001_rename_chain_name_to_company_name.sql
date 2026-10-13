@@ -20,7 +20,7 @@
 -- starting the application against an existing database. Hibernate update is
 -- not a substitute for this data-preserving rename/backfill.
 
-USE codeb_ims;
+USE ims_db;
 
 DROP PROCEDURE IF EXISTS migrate_task3_chain_schema;
 DELIMITER $$

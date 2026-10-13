@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS codeb_ims;
-USE codeb_ims;
+CREATE DATABASE IF NOT EXISTS ims_db;
+USE ims_db;
 
 CREATE TABLE IF NOT EXISTS users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,9 +36,12 @@ CREATE TABLE IF NOT EXISTS chains (
 
 CREATE TABLE IF NOT EXISTS brands (
     brand_id INT AUTO_INCREMENT PRIMARY KEY,
-    brand_name VARCHAR(100) NOT NULL,
-    chain_id INT,
-    FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+    brand_name VARCHAR(50) NOT NULL,
+    chain_id INT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    CONSTRAINT fk_brands_chain FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
 CREATE TABLE IF NOT EXISTS clients (

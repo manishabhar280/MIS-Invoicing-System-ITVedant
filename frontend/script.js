@@ -3,12 +3,18 @@ const API_BASE = "https://mis-invoicing-system-production-c653.up.railway.app/ap
 const LOCAL_API_BASE = "http://localhost:8080/api";
 const GROUP_API = `${LOCAL_API_BASE}/groups`;
 const CHAIN_API = `${LOCAL_API_BASE}/chains`;
+const isLocalFrontend = window.location.protocol === 'file:'
+    || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const BRAND_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/brands`;
 
 let allInvoicesCache = [];
 let chainGroupOptions = [];
 let chainsCache = [];
+let allBrandsCache = [];
 let editingChainId = null;
 let isSavingChain = false;
+let editingBrandId = null;
+let isSavingBrand = false;
 
 
 // Helper Function: Show Custom Toast Notification
@@ -66,6 +72,7 @@ function enforceSessionGuard() {
         loadClients();
         loadInvoices();
         loadPayments();
+        refreshDashboardMetrics();
 
         switchTab('dashboard');
 
@@ -234,12 +241,16 @@ function switchTab(tabName) {
             .innerText =
                 tabName === 'chains'
                     ? "Customer / Chain Management"
+                    : tabName === 'brands'
+                        ? "Brand Management"
                     : tabName.charAt(0).toUpperCase() +
                       tabName.slice(1) +
                       " Management";
         document.getElementById('page-subtitle')
             .innerText = tabName === 'chains'
                 ? "Manage company details, GSTN registration, and group assignments."
+                : tabName === 'brands'
+                    ? "Manage brands under their associated companies and groups."
                 : "Manage your " + tabName + " records.";
     }
 
@@ -259,6 +270,10 @@ function switchTab(tabName) {
 
     if (tabName === 'chains') {
         loadChainManagement();
+    }
+
+    if (tabName === 'brands') {
+        loadBrandManagement();
     }
 }
 
@@ -1055,6 +1070,375 @@ async function changeChainStatus(chain) {
 
 // ======================================================
 // END CUSTOMER / CHAIN MANAGEMENT
+// ======================================================
+
+
+// ======================================================
+// BRAND MANAGEMENT
+// ======================================================
+
+async function fetchCollection(url, label) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        const details = await response.text();
+        throw new Error(details || `${label} request failed (${response.status}).`);
+    }
+
+    const records = await response.json();
+    if (!Array.isArray(records)) {
+        throw new Error(`${label} response was not a list.`);
+    }
+    return records;
+}
+
+
+async function refreshDashboardMetrics() {
+    const metrics = [
+        ['stat-group-count', GROUP_API, 'groups'],
+        ['stat-chain-count', CHAIN_API, 'companies'],
+        ['stat-brand-count', BRAND_API, 'brands']
+    ];
+
+    await Promise.all(metrics.map(async ([elementId, url, label]) => {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        try {
+            const records = await fetchCollection(url, label);
+            element.textContent = String(records.length);
+        } catch (error) {
+            console.error(`Dashboard ${label} Count Error:`, error);
+            element.textContent = '—';
+        }
+    }));
+}
+
+
+async function loadBrandManagement() {
+    const tbody = document.getElementById('brandsTableBody');
+    if (!tbody) return;
+
+    renderBrandMessage(tbody, 'Loading brands...', 'loading');
+    const results = await Promise.allSettled([
+        fetchCollection(BRAND_API, 'Brands'),
+        fetchCollection(GROUP_API, 'Groups'),
+        fetchCollection(CHAIN_API, 'Companies')
+    ]);
+
+    if (results[0].status === 'rejected') {
+        console.error('Brands Fetch Error:', results[0].reason);
+        renderBrandMessage(tbody, 'Brands could not be loaded. Check the API connection and try again.', 'error');
+        showToast('Unable to Load Brands', results[0].reason.message, 'error');
+        allBrandsCache = [];
+        return;
+    }
+
+    allBrandsCache = results[0].value;
+    if (results[1].status === 'fulfilled') {
+        chainGroupOptions = results[1].value;
+        populateChainGroupSelects(chainGroupOptions);
+        populateBrandGroupFilter(chainGroupOptions);
+    } else {
+        console.error('Brand Groups Fetch Error:', results[1].reason);
+        showToast('Groups Unavailable', 'Brand group filtering could not be loaded.', 'error');
+    }
+
+    if (results[2].status === 'fulfilled') {
+        chainsCache = results[2].value;
+        populateBrandChainSelect(chainsCache);
+        populateBrandCompanyFilter(chainsCache);
+    } else {
+        console.error('Brand Companies Fetch Error:', results[2].reason);
+        populateBrandChainSelect([]);
+        populateBrandCompanyFilter([]);
+        showToast('Companies Unavailable', 'Brand company choices and filtering could not be loaded.', 'error');
+    }
+
+    filterBrands();
+}
+
+
+function populateBrandGroupFilter(groups) {
+    const filter = document.getElementById('brandGroupFilter');
+    if (!filter) return;
+
+    const selectedGroup = filter.value;
+    filter.replaceChildren(new Option('All Groups', ''));
+    groups.forEach(group => {
+        filter.add(new Option(group.groupName || `Group #${group.groupId}`, String(group.groupId)));
+    });
+    if (groups.some(group => String(group.groupId) === selectedGroup)) {
+        filter.value = selectedGroup;
+    }
+}
+
+
+function populateBrandChainSelect(chains) {
+    const select = document.getElementById('brandChainId');
+    if (!select) return;
+
+    const selectedChain = select.value;
+    select.replaceChildren(new Option(
+        chains.length ? 'Select a company / chain' : 'No companies available',
+        ''
+    ));
+    chains.forEach(chain => {
+        const label = chain.companyName || `Company #${chain.chainId}`;
+        select.add(new Option(`${label} (#${chain.chainId})`, String(chain.chainId)));
+    });
+    select.disabled = chains.length === 0 || isSavingBrand;
+    if (chains.some(chain => String(chain.chainId) === selectedChain)) {
+        select.value = selectedChain;
+    }
+}
+
+
+function populateBrandCompanyFilter(chains) {
+    const filter = document.getElementById('brandCompanyFilter');
+    if (!filter) return;
+
+    const selectedChain = filter.value;
+    filter.replaceChildren(new Option('All Companies', ''));
+    chains.forEach(chain => {
+        const label = chain.companyName || `Company #${chain.chainId}`;
+        filter.add(new Option(label, String(chain.chainId)));
+    });
+    if (chains.some(chain => String(chain.chainId) === selectedChain)) {
+        filter.value = selectedChain;
+    }
+}
+
+
+function filterBrands() {
+    const tbody = document.getElementById('brandsTableBody');
+    if (!tbody) return;
+
+    const groupId = document.getElementById('brandGroupFilter')?.value || '';
+    const chainId = document.getElementById('brandCompanyFilter')?.value || '';
+    const filtered = allBrandsCache.filter(brand => {
+        const brandChainId = brand.chain?.chainId;
+        const brandGroupId = brand.chain?.group?.groupId;
+        return (!chainId || String(brandChainId) === chainId)
+            && (!groupId || String(brandGroupId) === groupId);
+    });
+
+    renderBrands(tbody, filtered);
+}
+
+
+function renderBrands(tbody, brands) {
+    tbody.replaceChildren();
+    if (!brands.length) {
+        const groupSelected = document.getElementById('brandGroupFilter')?.value;
+        const companySelected = document.getElementById('brandCompanyFilter')?.value;
+        renderBrandMessage(
+            tbody,
+            allBrandsCache.length
+                ? 'No brands match the selected filters.'
+                : 'No brands have been added yet.',
+            groupSelected || companySelected ? 'filtered-empty' : 'empty'
+        );
+        return;
+    }
+
+    brands.forEach((brand, index) => {
+        const row = document.createElement('tr');
+        row.className = 'transition hover:bg-slate-50';
+        const group = brand.chain?.group;
+        const companyName = brand.chain?.companyName || '—';
+        const values = [
+            String(index + 1),
+            group?.groupName || '—',
+            companyName,
+            brand.brandName || '—'
+        ];
+
+        values.forEach((value, cellIndex) => {
+            const cell = document.createElement('td');
+            cell.className = cellIndex === 0
+                ? 'px-5 py-4 font-semibold text-slate-500'
+                : 'px-5 py-4 text-slate-700';
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+
+        const editCell = document.createElement('td');
+        editCell.className = 'px-5 py-4 text-center';
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100';
+        editButton.textContent = 'Edit';
+        editButton.addEventListener('click', () => editBrand(brand));
+        editCell.appendChild(editButton);
+        row.appendChild(editCell);
+
+        const actionCell = document.createElement('td');
+        actionCell.className = 'px-5 py-4 text-right';
+        if (brand.isActive === false) {
+            const inactiveLabel = document.createElement('span');
+            inactiveLabel.className = 'text-xs font-semibold text-slate-400';
+            inactiveLabel.textContent = 'Inactive';
+            actionCell.appendChild(inactiveLabel);
+        } else {
+            const deactivateButton = document.createElement('button');
+            deactivateButton.type = 'button';
+            deactivateButton.className = 'rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100';
+            deactivateButton.textContent = 'Deactivate';
+            deactivateButton.addEventListener('click', () => deactivateBrand(brand));
+            actionCell.appendChild(deactivateButton);
+        }
+        row.appendChild(actionCell);
+        tbody.appendChild(row);
+    });
+}
+
+
+function renderBrandMessage(tbody, message, state) {
+    tbody.replaceChildren();
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = state === 'error'
+        ? 'px-5 py-10 text-center text-rose-600'
+        : 'px-5 py-10 text-center text-slate-400';
+    if (state === 'loading') {
+        const spinner = document.createElement('i');
+        spinner.className = 'fa-solid fa-spinner fa-spin mr-2';
+        cell.appendChild(spinner);
+    }
+    cell.appendChild(document.createTextNode(message));
+    row.appendChild(cell);
+    tbody.appendChild(row);
+}
+
+
+function showBrandFormError(message) {
+    const element = document.getElementById('brandFormMessage');
+    element.textContent = message;
+    element.classList.remove('hidden');
+}
+
+
+function clearBrandFormError() {
+    const element = document.getElementById('brandFormMessage');
+    element.textContent = '';
+    element.classList.add('hidden');
+}
+
+
+function editBrand(brand) {
+    editingBrandId = brand.brandId;
+    document.getElementById('brandFormTitle').lastChild.textContent = ' Edit Brand';
+    document.getElementById('brandName').value = brand.brandName || '';
+    document.getElementById('brandChainId').value = brand.chain?.chainId
+        ? String(brand.chain.chainId)
+        : '';
+    document.getElementById('brandSubmitButton').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Changes';
+    clearBrandFormError();
+    document.getElementById('brandName').focus();
+}
+
+
+function cancelBrandEdit() {
+    if (isSavingBrand) return;
+
+    editingBrandId = null;
+    document.getElementById('brandForm').reset();
+    document.getElementById('brandFormTitle').lastChild.textContent = ' Add Brand';
+    document.getElementById('brandSubmitButton').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Brand';
+    clearBrandFormError();
+}
+
+
+async function submitBrandForm(event) {
+    event.preventDefault();
+    if (isSavingBrand) return;
+    clearBrandFormError();
+
+    const brandName = document.getElementById('brandName').value.trim();
+    const chainId = document.getElementById('brandChainId').value;
+    if (!brandName) {
+        showBrandFormError('Brand name is required.');
+        return;
+    }
+    if (brandName.length > 50) {
+        showBrandFormError('Brand name must be 50 characters or fewer.');
+        return;
+    }
+    if (!chainId) {
+        showBrandFormError('Select a company / chain.');
+        return;
+    }
+
+    const isEdit = editingBrandId !== null;
+    const submitButton = document.getElementById('brandSubmitButton');
+    isSavingBrand = true;
+    submitButton.disabled = true;
+    submitButton.classList.add('cursor-not-allowed', 'opacity-60');
+    document.getElementById('brandChainId').disabled = true;
+    submitButton.textContent = isEdit ? 'Saving changes...' : 'Saving brand...';
+
+    try {
+        const response = await fetch(
+            isEdit ? `${BRAND_API}/${encodeURIComponent(editingBrandId)}` : BRAND_API,
+            {
+                method: isEdit ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ brandName, chainId: Number(chainId) })
+            }
+        );
+
+        if (!response.ok) {
+            const message = await response.text();
+            showBrandFormError(message || `Unable to ${isEdit ? 'update' : 'save'} the brand (HTTP ${response.status}).`);
+            return;
+        }
+
+        showToast('Success', isEdit ? 'Brand updated successfully.' : 'Brand added successfully.');
+        editingBrandId = null;
+        document.getElementById('brandForm').reset();
+        document.getElementById('brandFormTitle').lastChild.textContent = ' Add Brand';
+        clearBrandFormError();
+        await Promise.all([loadBrandManagement(), refreshDashboardMetrics()]);
+    } catch (error) {
+        console.error('Save Brand Error:', error);
+        showBrandFormError('Unable to connect to the Brand service. Check the API connection and try again.');
+    } finally {
+        isSavingBrand = false;
+        submitButton.disabled = false;
+        submitButton.classList.remove('cursor-not-allowed', 'opacity-60');
+        document.getElementById('brandChainId').disabled = false;
+        submitButton.innerHTML = editingBrandId !== null
+            ? '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Changes'
+            : '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Brand';
+    }
+}
+
+
+async function deactivateBrand(brand) {
+    if (!confirm(`Deactivate brand "${brand.brandName}"?`)) return;
+
+    try {
+        const response = await fetch(
+            `${BRAND_API}/${encodeURIComponent(brand.brandId)}`,
+            { method: 'DELETE' }
+        );
+        if (!response.ok) {
+            const message = await response.text();
+            showToast('Unable to Deactivate Brand', message || `The request failed (HTTP ${response.status}).`, 'error');
+            return;
+        }
+
+        showToast('Success', 'Brand deactivated successfully.');
+        await Promise.all([loadBrandManagement(), refreshDashboardMetrics()]);
+    } catch (error) {
+        console.error('Deactivate Brand Error:', error);
+        showToast('Connection Error', 'Unable to connect to the Brand service.', 'error');
+    }
+}
+
+// ======================================================
+// END BRAND MANAGEMENT
 // ======================================================
 
 

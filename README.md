@@ -142,6 +142,23 @@ DB_URL=jdbc:mysql://localhost:3306/ims_db
 
 The project uses environment variables so that sensitive database credentials are not stored directly in the source code.
 
+### Apply database migrations
+
+For an existing local database, back it up first and confirm your MySQL connection
+targets `ims_db`. From the repository root, apply the Zone migration with:
+
+```cmd
+mysql -u your_mysql_user -p < database\migrations\003_create_zones_table.sql
+```
+
+The migration selects `ims_db` and verifies that `brands.brand_id` is a signed
+`BIGINT` auto-increment primary key. For an existing `zones` table, it checks
+the table shape and Brand references, widens `zones.brand_id` from signed
+`INT` to signed `BIGINT` when needed, then adds the Brand index and foreign key
+if absent. It does not modify the Brand primary key or delete/reset records.
+Stop the backend before applying it so Hibernate does not attempt the schema
+update concurrently, then restart the backend after the migration completes.
+
 ---
 
 ## Run Backend Locally

@@ -1,20 +1,29 @@
 const API_BASE = "https://mis-invoicing-system-production-c653.up.railway.app/api/v1";
 
 const LOCAL_API_BASE = "http://localhost:8080/api";
-const GROUP_API = `${LOCAL_API_BASE}/groups`;
-const CHAIN_API = `${LOCAL_API_BASE}/chains`;
 const isLocalFrontend = window.location.protocol === 'file:'
     || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const APP_API_BASE = isLocalFrontend ? LOCAL_API_BASE : API_BASE.replace(/\/v1$/, '');
+const GROUP_API = `${APP_API_BASE}/groups`;
+const CHAIN_API = `${APP_API_BASE}/chains`;
 const BRAND_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/brands`;
+const ZONE_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/zones`;
 
 let allInvoicesCache = [];
 let chainGroupOptions = [];
 let chainsCache = [];
 let allBrandsCache = [];
+let allZonesCache = [];
+let zoneOptionsLoadError = false;
+let zoneRecordsLoading = false;
+let zoneRecordsRequestId = 0;
+let zoneManagementRequestId = 0;
 let editingChainId = null;
 let isSavingChain = false;
 let editingBrandId = null;
 let isSavingBrand = false;
+let editingZoneId = null;
+let isSavingZone = false;
 
 
 // Helper Function: Show Custom Toast Notification
@@ -243,6 +252,8 @@ function switchTab(tabName) {
                     ? "Customer / Chain Management"
                     : tabName === 'brands'
                         ? "Brand Management"
+                        : tabName === 'zones'
+                            ? "Zone Management"
                     : tabName.charAt(0).toUpperCase() +
                       tabName.slice(1) +
                       " Management";
@@ -251,6 +262,8 @@ function switchTab(tabName) {
                 ? "Manage company details, GSTN registration, and group assignments."
                 : tabName === 'brands'
                     ? "Manage brands under their associated companies and groups."
+                    : tabName === 'zones'
+                        ? "Manage zones under their associated brands, companies, and groups."
                 : "Manage your " + tabName + " records.";
     }
 
@@ -274,6 +287,10 @@ function switchTab(tabName) {
 
     if (tabName === 'brands') {
         loadBrandManagement();
+    }
+
+    if (tabName === 'zones') {
+        loadZoneManagement();
     }
 }
 
@@ -1096,7 +1113,8 @@ async function refreshDashboardMetrics() {
     const metrics = [
         ['stat-group-count', GROUP_API, 'groups'],
         ['stat-chain-count', CHAIN_API, 'companies'],
-        ['stat-brand-count', BRAND_API, 'brands']
+        ['stat-brand-count', BRAND_API, 'brands'],
+        ['stat-zone-count', ZONE_API, 'zones']
     ];
 
     await Promise.all(metrics.map(async ([elementId, url, label]) => {
@@ -1104,7 +1122,9 @@ async function refreshDashboardMetrics() {
         if (!element) return;
 
         try {
-            const records = await fetchCollection(url, label);
+            const records = url === ZONE_API
+                ? await fetchZoneCollection(url, label)
+                : await fetchCollection(url, label);
             element.textContent = String(records.length);
         } catch (error) {
             console.error(`Dashboard ${label} Count Error:`, error);
@@ -1439,6 +1459,502 @@ async function deactivateBrand(brand) {
 
 // ======================================================
 // END BRAND MANAGEMENT
+// ======================================================
+
+// ======================================================
+// ZONE MANAGEMENT
+// ======================================================
+
+async function handleZoneUnauthorized() {
+    localStorage.removeItem('ims_session_user');
+    enforceSessionGuard();
+    showToast('Session Expired', 'Please sign in again to continue.', 'error');
+}
+
+
+async function fetchZoneCollection(url, label) {
+    const response = await fetch(url);
+    if (response.status === 401) {
+        await handleZoneUnauthorized();
+        throw new Error('Your session has expired. Please sign in again.');
+    }
+    if (!response.ok) {
+        const details = await response.text();
+        throw new Error(details || `${label} request failed (HTTP ${response.status}).`);
+    }
+
+    const records = await response.json();
+    if (!Array.isArray(records)) {
+        throw new Error(`${label} response was not a list.`);
+    }
+    return records;
+}
+
+
+async function fetchZoneApi(url, options = {}) {
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+        await handleZoneUnauthorized();
+    }
+    return response;
+}
+
+
+async function loadZoneManagement() {
+    const tbody = document.getElementById('zonesTableBody');
+    if (!tbody) return;
+
+    const requestId = ++zoneManagementRequestId;
+    ++zoneRecordsRequestId;
+    zoneRecordsLoading = true;
+    renderZoneMessage(tbody, 'Loading zones...', 'loading');
+    setZonePageMessage('', 'info');
+
+    const optionResults = await Promise.allSettled([
+        fetchZoneCollection(BRAND_API, 'Brands'),
+        fetchZoneCollection(CHAIN_API, 'Companies'),
+        fetchZoneCollection(GROUP_API, 'Groups'),
+        fetchZoneCollection(ZONE_API, 'Zones')
+    ]);
+
+    if (requestId !== zoneManagementRequestId) return;
+
+    if (optionResults[0].status === 'fulfilled') {
+        allBrandsCache = optionResults[0].value;
+        populateZoneBrandSelects(allBrandsCache);
+    } else {
+        console.error('Zone Brand Options Error:', optionResults[0].reason);
+        populateZoneBrandSelects([]);
+    }
+
+    if (optionResults[1].status === 'fulfilled') {
+        chainsCache = optionResults[1].value;
+        populateZoneSelect(
+            document.getElementById('zoneCompanyFilter'),
+            chainsCache,
+            'All Companies',
+            chain => chain.companyName || `Company #${chain.chainId}`,
+            chain => chain.chainId
+        );
+    } else {
+        console.error('Zone Company Options Error:', optionResults[1].reason);
+        populateZoneSelect(document.getElementById('zoneCompanyFilter'), [], 'All Companies');
+    }
+
+    if (optionResults[2].status === 'fulfilled') {
+        chainGroupOptions = optionResults[2].value;
+        populateZoneSelect(
+            document.getElementById('zoneGroupFilter'),
+            chainGroupOptions,
+            'All Groups',
+            group => group.groupName || `Group #${group.groupId}`,
+            group => group.groupId
+        );
+    } else {
+        console.error('Zone Group Options Error:', optionResults[2].reason);
+        populateZoneSelect(document.getElementById('zoneGroupFilter'), [], 'All Groups');
+    }
+
+    const optionErrors = optionResults.slice(0, 3).filter(result => result.status === 'rejected');
+    zoneOptionsLoadError = optionErrors.length > 0;
+    if (optionErrors.length) {
+        setZonePageMessage(
+            'Some Brand, Company or Group options could not be loaded. Check the API connection and retry.',
+            'error'
+        );
+    }
+
+    if (optionResults[3].status === 'fulfilled') {
+        allZonesCache = optionResults[3].value;
+        zoneRecordsLoading = false;
+        renderFilteredZones();
+        if (!zoneOptionsLoadError) setZonePageMessage('', 'info');
+    } else {
+        const error = optionResults[3].reason;
+        zoneRecordsLoading = false;
+        if (error.message.includes('session has expired')) return;
+        console.error('Zones Fetch Error:', error);
+        allZonesCache = [];
+        renderZoneMessage(tbody, 'Zones could not be loaded. Check the API connection and try again.', 'error');
+        setZonePageMessage('Zones could not be loaded. Please check the API connection and retry.', 'error');
+        showToast('Unable to Load Zones', error.message, 'error');
+    }
+}
+
+
+function populateZoneBrandSelects(brands) {
+    const filter = document.getElementById('zoneBrandFilter');
+    const formSelect = document.getElementById('zoneBrandId');
+    const labelForBrand = brand => {
+        const company = brand.chain?.companyName;
+        return `${brand.brandName || `Brand #${brand.brandId}`}${company ? ` — ${company}` : ''}`;
+    };
+
+    populateZoneSelect(filter, brands, 'All Brands', labelForBrand, brand => brand.brandId);
+    populateZoneSelect(
+        formSelect,
+        brands,
+        brands.length ? 'Select a brand' : 'No brands available',
+        labelForBrand,
+        brand => brand.brandId
+    );
+
+    const addButton = document.querySelector('#tab-zones > div:first-child button');
+    if (addButton) {
+        addButton.disabled = brands.length === 0 || isSavingZone;
+        addButton.classList.toggle('opacity-60', addButton.disabled);
+        addButton.classList.toggle('cursor-not-allowed', addButton.disabled);
+    }
+}
+
+
+function populateZoneSelect(select, records, placeholder, labelForRecord, idForRecord) {
+    if (!select) return;
+
+    const selectedValue = select.value;
+    select.replaceChildren(new Option(placeholder, ''));
+    records.forEach(record => {
+        const id = idForRecord(record);
+        select.add(new Option(labelForRecord(record), String(id)));
+    });
+    select.disabled = records.length === 0;
+    if (records.some(record => String(idForRecord(record)) === selectedValue)) {
+        select.value = selectedValue;
+    }
+}
+
+
+async function loadZoneRecords() {
+    const tbody = document.getElementById('zonesTableBody');
+    if (!tbody) return;
+
+    const requestId = ++zoneRecordsRequestId;
+    zoneRecordsLoading = true;
+    renderZoneMessage(tbody, 'Loading zones...', 'loading');
+    try {
+        const zones = await fetchZoneCollection(ZONE_API, 'Zones');
+        if (requestId !== zoneRecordsRequestId) return;
+
+        allZonesCache = zones;
+        zoneRecordsLoading = false;
+        renderFilteredZones();
+        if (zoneOptionsLoadError) {
+            setZonePageMessage(
+                'Some Brand, Company or Group options could not be loaded. Check the API connection and retry.',
+                'error'
+            );
+        } else {
+            setZonePageMessage('', 'info');
+        }
+    } catch (error) {
+        if (requestId !== zoneRecordsRequestId) return;
+        zoneRecordsLoading = false;
+        if (error.message.includes('session has expired')) return;
+        console.error('Zones Fetch Error:', error);
+        allZonesCache = [];
+        renderZoneMessage(tbody, 'Zones could not be loaded. Check the API connection and try again.', 'error');
+        setZonePageMessage('Zones could not be loaded. Please check the API connection and retry.', 'error');
+        showToast('Unable to Load Zones', error.message, 'error');
+    }
+}
+
+
+function filterZones() {
+    if (zoneRecordsLoading) return;
+    renderFilteredZones();
+}
+
+
+function resetZoneFilters() {
+    document.getElementById('zoneBrandFilter').value = '';
+    document.getElementById('zoneCompanyFilter').value = '';
+    document.getElementById('zoneGroupFilter').value = '';
+    filterZones();
+}
+
+
+function renderFilteredZones() {
+    const tbody = document.getElementById('zonesTableBody');
+    if (!tbody || zoneRecordsLoading) return;
+
+    const brandId = document.getElementById('zoneBrandFilter')?.value || '';
+    const chainId = document.getElementById('zoneCompanyFilter')?.value || '';
+    const groupId = document.getElementById('zoneGroupFilter')?.value || '';
+    const filteredZones = allZonesCache.filter(zone => {
+        const zoneBrandId = zone.brandId ?? zone.brand?.brandId;
+        const zoneChainId = zone.chainId ?? zone.brand?.chain?.chainId;
+        const zoneGroupId = zone.groupId ?? zone.brand?.chain?.group?.groupId;
+        return (!brandId || String(zoneBrandId) === brandId)
+            && (!chainId || String(zoneChainId) === chainId)
+            && (!groupId || String(zoneGroupId) === groupId);
+    });
+
+    renderZones(tbody, filteredZones);
+}
+
+
+function renderZones(tbody, zones) {
+    tbody.replaceChildren();
+    if (!zones.length) {
+        const hasFilters = Boolean(
+            document.getElementById('zoneBrandFilter')?.value
+            || document.getElementById('zoneCompanyFilter')?.value
+            || document.getElementById('zoneGroupFilter')?.value
+        );
+        renderZoneMessage(
+            tbody,
+            hasFilters ? 'No zones match the selected filters.' : 'No zones have been added yet.',
+            'empty'
+        );
+        return;
+    }
+
+    zones.forEach((zone, index) => {
+        const row = document.createElement('tr');
+        row.className = 'transition hover:bg-slate-50';
+        const values = [
+            String(index + 1),
+            zone.zoneName || '—',
+            zone.brandName || zone.brand?.brandName || '—',
+            zone.companyName || zone.brand?.chain?.companyName || '—',
+            zone.groupName || zone.brand?.chain?.group?.groupName || '—'
+        ];
+
+        values.forEach((value, cellIndex) => {
+            const cell = document.createElement('td');
+            cell.className = cellIndex === 0
+                ? 'px-5 py-4 font-semibold text-slate-500'
+                : 'px-5 py-4 text-slate-700';
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+
+        const actions = document.createElement('td');
+        actions.className = 'px-5 py-4 text-right whitespace-nowrap';
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'mr-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100';
+        editButton.textContent = 'Edit';
+        editButton.addEventListener('click', () => openZoneModal(zone));
+        actions.appendChild(editButton);
+
+        if (zone.isActive !== false) {
+            const deactivateButton = document.createElement('button');
+            deactivateButton.type = 'button';
+            deactivateButton.className = 'rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100';
+            deactivateButton.textContent = 'Deactivate';
+            deactivateButton.addEventListener('click', () => deactivateZone(zone));
+            actions.appendChild(deactivateButton);
+        } else {
+            const inactiveStatus = document.createElement('span');
+            inactiveStatus.className = 'inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600';
+            inactiveStatus.textContent = 'Inactive';
+            actions.appendChild(inactiveStatus);
+        }
+
+        row.appendChild(actions);
+        tbody.appendChild(row);
+    });
+}
+
+
+function renderZoneMessage(tbody, message, state) {
+    tbody.replaceChildren();
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = 'px-5 py-10 text-center text-slate-400';
+
+    if (state === 'loading') {
+        const spinner = document.createElement('i');
+        spinner.className = 'fa-solid fa-spinner fa-spin mr-2';
+        cell.appendChild(spinner);
+    }
+
+    cell.appendChild(document.createTextNode(message));
+    row.appendChild(cell);
+    tbody.appendChild(row);
+}
+
+
+function setZonePageMessage(message, state) {
+    const element = document.getElementById('zonePageMessage');
+    if (!element) return;
+
+    element.textContent = message;
+    element.className = message
+        ? state === 'error'
+            ? 'rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700'
+            : 'rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700'
+        : 'hidden';
+}
+
+
+async function openZoneModal(zone = null) {
+    if (!allBrandsCache.length && !zone) {
+        try {
+            allBrandsCache = await fetchZoneCollection(BRAND_API, 'Brands');
+            populateZoneBrandSelects(allBrandsCache);
+        } catch (error) {
+            console.error('Zone Brand Options Error:', error);
+            showToast('Brands Unavailable', 'Load a brand before adding a zone.', 'error');
+            return;
+        }
+    }
+
+    if (!allBrandsCache.length && !zone) {
+        showToast('Brands Unavailable', 'Load a brand before adding a zone.', 'error');
+        return;
+    }
+
+    if (zone && !allBrandsCache.length) {
+        const brandId = zone.brandId ?? zone.brand?.brandId;
+        const brandName = zone.brandName ?? zone.brand?.brandName ?? `Brand #${brandId}`;
+        const brandSelect = document.getElementById('zoneBrandId');
+        brandSelect.replaceChildren(new Option(brandName, String(brandId || '')));
+    }
+
+    editingZoneId = zone ? zone.zoneId : null;
+    document.getElementById('zoneModalTitle').textContent = editingZoneId ? 'Edit Zone' : 'Add Zone';
+    document.getElementById('zoneName').value = zone?.zoneName || '';
+    document.getElementById('zoneBrandId').value = zone?.brandId
+        ? String(zone.brandId)
+        : zone?.brand?.brandId
+            ? String(zone.brand.brandId)
+            : '';
+    document.getElementById('zoneBrandId').disabled = Boolean(editingZoneId);
+    document.getElementById('zoneStatusField').classList.toggle('hidden', !editingZoneId);
+    document.getElementById('zoneIsActive').value = zone?.isActive === false ? 'false' : 'true';
+    document.getElementById('zoneSubmitButton').innerHTML = editingZoneId
+        ? '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Changes'
+        : '<i class="fa-solid fa-floppy-disk mr-2"></i>Save Zone';
+    document.getElementById('zoneFormMessage').classList.add('hidden');
+    document.getElementById('zoneModal').classList.remove('hidden');
+    document.getElementById('zoneName').focus();
+}
+
+
+function closeZoneModal() {
+    if (isSavingZone) return;
+    document.getElementById('zoneModal').classList.add('hidden');
+    document.getElementById('zoneForm').reset();
+    document.getElementById('zoneBrandId').disabled = false;
+    document.getElementById('zoneStatusField').classList.add('hidden');
+    editingZoneId = null;
+}
+
+
+async function submitZoneForm(event) {
+    event.preventDefault();
+    if (isSavingZone) return;
+
+    const nameInput = document.getElementById('zoneName');
+    const brandSelect = document.getElementById('zoneBrandId');
+    const message = document.getElementById('zoneFormMessage');
+    const submitButton = document.getElementById('zoneSubmitButton');
+    const zoneName = nameInput.value.trim();
+    const brandId = Number(brandSelect.value);
+    const isEdit = editingZoneId !== null;
+    const zoneIsActive = document.getElementById('zoneIsActive').value;
+
+    if (!zoneName || zoneName.length > 50
+        || (!isEdit && (!Number.isInteger(brandId) || brandId <= 0))
+        || (isEdit && !['true', 'false'].includes(zoneIsActive))) {
+        message.textContent = !zoneName
+            ? 'Zone name is required.'
+            : zoneName.length > 50
+                ? 'Zone name must not exceed 50 characters.'
+                : isEdit
+                    ? 'Select a valid Zone status.'
+                    : 'Select a valid brand.';
+        message.classList.remove('hidden');
+        return;
+    }
+
+    if (isEdit && (!Number.isSafeInteger(Number(editingZoneId)) || Number(editingZoneId) <= 0)) {
+        message.textContent = 'The selected Zone has an invalid ID. Close this form and reload the list.';
+        message.classList.remove('hidden');
+        return;
+    }
+
+    isSavingZone = true;
+    submitButton.disabled = true;
+    submitButton.classList.add('cursor-not-allowed', 'opacity-60');
+    try {
+        const response = await fetchZoneApi(
+            isEdit ? `${ZONE_API}/${encodeURIComponent(editingZoneId)}` : ZONE_API,
+            {
+                method: isEdit ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(isEdit
+                    ? { zoneName, isActive: zoneIsActive === 'true' }
+                    : { zoneName, brandId })
+            }
+        );
+
+        if (!response.ok) {
+            const details = await response.text();
+            message.textContent = response.status === 401
+                ? 'Your session has expired. Please sign in again.'
+                : response.status === 404
+                    ? details || 'The selected Zone was not found.'
+                    : details || `Unable to save the Zone (HTTP ${response.status}).`;
+            message.classList.remove('hidden');
+            return;
+        }
+
+        showToast('Success', isEdit ? 'Zone updated successfully.' : 'Zone added successfully.');
+        isSavingZone = false;
+        closeZoneModal();
+        setZonePageMessage('', 'info');
+        await Promise.all([loadZoneRecords(), refreshDashboardMetrics()]);
+    } catch (error) {
+        console.error('Save Zone Error:', error);
+        message.textContent = 'Unable to connect to the Zone service. Check the API connection and try again.';
+        message.classList.remove('hidden');
+    } finally {
+        isSavingZone = false;
+        submitButton.disabled = false;
+        submitButton.classList.remove('cursor-not-allowed', 'opacity-60');
+    }
+}
+
+
+async function deactivateZone(zone) {
+    const zoneId = Number(zone?.zoneId);
+    if (!Number.isSafeInteger(zoneId) || zoneId <= 0) {
+        showToast('Invalid Zone', 'The selected Zone has an invalid ID. Reload the list and try again.', 'error');
+        return;
+    }
+    if (!confirm(`Deactivate Zone #${zoneId} "${zone.zoneName}"? This keeps the record but marks it inactive.`)) return;
+
+    try {
+        const response = await fetchZoneApi(
+            `${ZONE_API}/${encodeURIComponent(zoneId)}`,
+            { method: 'DELETE' }
+        );
+        if (!response.ok) {
+            const details = await response.text();
+            const message = response.status === 401
+                ? 'Your session has expired. Please sign in again.'
+                : response.status === 404
+                    ? details || `Zone #${zoneId} was not found.`
+                    : details || `The request failed (HTTP ${response.status}).`;
+            showToast('Unable to Deactivate Zone', message, 'error');
+            return;
+        }
+
+        showToast('Success', 'Zone deactivated successfully.');
+        setZonePageMessage('', 'info');
+        await Promise.all([loadZoneRecords(), refreshDashboardMetrics()]);
+    } catch (error) {
+        console.error('Deactivate Zone Error:', error);
+        showToast('Connection Error', 'Unable to connect to the Zone service.', 'error');
+    }
+}
+
+// ======================================================
+// END ZONE MANAGEMENT
 // ======================================================
 
 

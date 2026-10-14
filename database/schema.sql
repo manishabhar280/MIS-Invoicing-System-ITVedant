@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS chains (
 );
 
 CREATE TABLE IF NOT EXISTS brands (
-    brand_id INT AUTO_INCREMENT PRIMARY KEY,
+    brand_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     brand_name VARCHAR(50) NOT NULL,
     chain_id INT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -44,13 +44,24 @@ CREATE TABLE IF NOT EXISTS brands (
     CONSTRAINT fk_brands_chain FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
 
+CREATE TABLE IF NOT EXISTS zones (
+    zone_id INT AUTO_INCREMENT PRIMARY KEY,
+    zone_name VARCHAR(50) NOT NULL,
+    brand_id BIGINT NOT NULL,
+    is_active BIT(1) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    INDEX idx_zones_brand_id (brand_id),
+    CONSTRAINT fk_zones_brand FOREIGN KEY (brand_id) REFERENCES brands(brand_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS clients (
     client_id INT AUTO_INCREMENT PRIMARY KEY,
     client_name VARCHAR(100) NOT NULL,
     organization_name VARCHAR(150),
     gst_number VARCHAR(15),
     group_id INT,
-    brand_id INT,
+    brand_id BIGINT,
     FOREIGN KEY (group_id) REFERENCES `groups`(group_id),
     FOREIGN KEY (brand_id) REFERENCES brands(brand_id)
 );

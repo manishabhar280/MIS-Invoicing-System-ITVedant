@@ -156,8 +156,61 @@ The migration selects `ims_db` and verifies that `brands.brand_id` is a signed
 the table shape and Brand references, widens `zones.brand_id` from signed
 `INT` to signed `BIGINT` when needed, then adds the Brand index and foreign key
 if absent. It does not modify the Brand primary key or delete/reset records.
-Stop the backend before applying it so Hibernate does not attempt the schema
-update concurrently, then restart the backend after the migration completes.
+Stop the backend before applying it to avoid concurrent application access,
+then restart the backend after the migration completes.
+
+`database\schema.sql` describes a fresh installation. It is not an upgrade
+script and must not be used to recreate or replace tables in an existing
+database.
+
+For Task 6 Estimate Management on an existing database, first confirm that its
+legacy Estimate, Chain, Client, Brand, and Zone definitions match the
+preconditions in `database\migrations\004_estimate_management.sql`. Back up
+the database and test the migration on a disposable copy before applying it
+manually. The migration adds nullable Estimate fields and Brand/Zone foreign
+keys; it does not rename `estimate_id`, modify `amount`, change legacy
+nullability, or add an Invoice–Estimate relationship. It stops before table
+changes if the preconditions fail or if any Task 6 column already exists;
+inspect a partially applied or previously applied migration before repair or
+retry. MySQL DDL implicitly commits and is not transactionally rolled back as a
+whole, so a backup and post-migration schema check are required.
+
+To apply Task 6 in MySQL Workbench, connect to the intended MySQL instance,
+open `database\migrations\004_estimate_management.sql`, and execute the entire
+script once. The script selects `ims_db` and runs its preflight before the
+single `ALTER TABLE`. If execution reports an error, stop and inspect the
+schema and `m004_estimate_management_preflight` routine before taking any
+further action; a failed preflight can leave that helper routine behind, so do
+not blindly rerun the script. After success, verify all 12 Task 6 columns and
+both new foreign keys, then start the backend. Do not disable Hibernate
+validation or run `schema.sql` against an existing database.
+
+The application uses Hibernate schema validation rather than automatic schema
+updates. Apply the appropriate schema setup or migration before starting the
+backend. Estimate API IDs and money values are serialized as decimal strings
+so JavaScript does not round BIGINT identifiers or monetary values. New
+Estimates also populate the legacy required `amount` column from the server-
+calculated total; edits leave the existing legacy amount untouched.
+
+### Task 6 – Estimate Management
+
+The Estimates dashboard supports listing, searching, viewing, creating, and
+editing estimates. The form selects an active Chain/Company, then its active
+Brand and that Brand's active Zone. Estimate totals are calculated and
+validated on the server using `BigDecimal`; generated BIGINT IDs are exposed
+as decimal strings to avoid JavaScript precision loss. The REST API is rooted
+at `/api/v1/estimates` (`GET`, `GET /{id}`, `POST`, and `PUT /{id}`).
+
+Validation recorded during development:
+
+- `mvn -f backend\pom.xml clean compile` — passed.
+- `node --check frontend\script.js` — passed.
+- Local master-data API responses were checked for the Chain → Brand → Zone
+  identifiers and active flags used by the dropdowns.
+- `GET /api/v1/estimates` returned HTTP 200 with one estimate during the local
+  smoke test; this confirms the endpoint response, not deployment status.
+- The user reported successful manual Task 6 testing; the UI test was not
+  independently repeated for this review.
 
 ---
 

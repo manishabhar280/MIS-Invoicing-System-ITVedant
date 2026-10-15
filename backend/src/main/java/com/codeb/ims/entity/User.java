@@ -8,10 +8,16 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
+    @Column(name = "username", length = 255)
     private String username;
+
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
+
+    @Column(name = "role", length = 255)
     private String role;
 
     public User() {}

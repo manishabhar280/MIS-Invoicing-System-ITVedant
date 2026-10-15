@@ -15,8 +15,8 @@ public class Brand {
     @Column(name = "brand_name", nullable = false, length = 50)
     private String brandName;
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "chain_id", nullable = false)
+    @ManyToOne(optional = true)
+    @JoinColumn(name = "chain_id", nullable = true)
     private Chain chain;
 
     @Column(name = "is_active", nullable = false)

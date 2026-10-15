@@ -44,12 +44,12 @@ public class ZoneService {
     }
 
     @Transactional(readOnly = true)
-    public ZoneResponseDTO getZoneById(Long id) {
+    public ZoneResponseDTO getZoneById(Integer id) {
         return toResponse(requireZone(id));
     }
 
     @Transactional
-    public ZoneResponseDTO updateZone(Long id, ZoneRequestDTO request) {
+    public ZoneResponseDTO updateZone(Integer id, ZoneRequestDTO request) {
         validateUpdateRequest(request);
 
         Zone zone = requireZone(id);
@@ -69,7 +69,7 @@ public class ZoneService {
     }
 
     @Transactional
-    public ZoneResponseDTO deactivateZone(Long id) {
+    public ZoneResponseDTO deactivateZone(Integer id) {
         Zone zone = requireZone(id);
         zone.setIsActive(false);
         return toResponse(zoneRepository.save(zone));
@@ -99,7 +99,7 @@ public class ZoneService {
                 .toList();
     }
 
-    private Zone requireZone(Long id) {
+    private Zone requireZone(Integer id) {
         validateId(id, "zoneId");
         return zoneRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Zone not found with ID: " + id));
@@ -139,25 +139,25 @@ public class ZoneService {
         return trimmedName;
     }
 
-    private void validateId(Long id, String fieldName) {
-        if (id == null || id <= 0) {
+    private void validateId(Number id, String fieldName) {
+        if (id == null || id.longValue() <= 0) {
             throw new IllegalArgumentException(fieldName + " must be a positive integer");
         }
     }
 
     private ZoneResponseDTO toResponse(Zone zone) {
         Brand brand = zone.getBrand();
-        Chain chain = brand.getChain();
-        Group group = chain.getGroup();
+        Chain chain = brand == null ? null : brand.getChain();
+        Group group = chain == null ? null : chain.getGroup();
         return new ZoneResponseDTO(
                 zone.getZoneId(),
                 zone.getZoneName(),
-                brand.getBrandId(),
-                brand.getBrandName(),
-                chain.getChainId(),
-                chain.getCompanyName(),
-                group.getGroupId(),
-                group.getGroupName(),
+                brand == null ? null : brand.getBrandId(),
+                brand == null ? null : brand.getBrandName(),
+                chain == null ? null : chain.getChainId(),
+                chain == null ? null : chain.getCompanyName(),
+                group == null ? null : group.getGroupId(),
+                group == null ? null : group.getGroupName(),
                 zone.getIsActive(),
                 zone.getCreatedAt(),
                 zone.getUpdatedAt());

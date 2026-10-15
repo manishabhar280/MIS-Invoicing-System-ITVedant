@@ -125,6 +125,9 @@
                     <button id="nav-zones" onclick="switchTab('zones')" class="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl text-sm font-medium transition">
                         <i class="fa-solid fa-map-location-dot w-5 mr-3"></i> Zones
                     </button>
+                    <button id="nav-estimates" onclick="switchTab('estimates')" class="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl text-sm font-medium transition">
+                        <i class="fa-solid fa-file-invoice w-5 mr-3"></i> Estimates
+                    </button>
 
                 </nav>
             </div>
@@ -805,6 +808,51 @@ async function submitAddGroup(e) {
 
 
 
+                <section id="tab-estimates" class="tab-content hidden space-y-6">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div class="rounded-2xl bg-gradient-to-br from-fuchsia-600 to-indigo-600 p-5 text-white shadow-lg">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-fuchsia-100">Total Estimates</p>
+                            <h2 id="estimateCount" class="mt-1 text-3xl font-extrabold">—</h2>
+                        </div>
+                        <div class="flex items-center justify-end">
+                            <button type="button" onclick="openEstimateModal()" class="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white shadow-md transition hover:bg-indigo-700">
+                                <i class="fa-solid fa-plus mr-2"></i>Add Estimate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="estimatePageMessage" class="hidden rounded-xl border px-4 py-3 text-sm" role="status"></div>
+
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div class="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 class="font-bold text-slate-800">Estimate Directory</h3>
+                            <div class="flex flex-col gap-2 sm:flex-row">
+                                <input id="estimateSearch" type="search" oninput="filterEstimates()" placeholder="Search estimate, company, service..." class="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                                <input id="estimateDeliveryFilter" type="date" onchange="filterEstimates()" aria-label="Filter estimates by delivery date" class="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[1050px] text-left">
+                                <thead class="border-b border-slate-200 bg-slate-50/80 text-xs font-bold uppercase text-slate-500">
+                                    <tr>
+                                        <th class="px-5 py-3.5">Estimate ID</th>
+                                        <th class="px-5 py-3.5">Company / Group</th>
+                                        <th class="px-5 py-3.5">Brand / Zone</th>
+                                        <th class="px-5 py-3.5">Service</th>
+                                        <th class="px-5 py-3.5">Qty</th>
+                                        <th class="px-5 py-3.5">Total</th>
+                                        <th class="px-5 py-3.5">Delivery</th>
+                                        <th class="px-5 py-3.5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="estimateTableBody" class="divide-y divide-slate-100 text-sm">
+                                    <tr><td colspan="8" class="px-5 py-10 text-center text-slate-400">Open Estimates to load estimates.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- SECTION 2: INVOICES -->
                 <div id="tab-invoices" class="tab-content hidden space-y-6">
                     <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4">
@@ -881,6 +929,69 @@ async function submitAddGroup(e) {
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="estimateModal" class="fixed inset-0 z-50 hidden items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="estimateModalTitle">
+        <div class="my-auto w-full max-w-3xl rounded-2xl border border-slate-100 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+                <div>
+                    <h3 id="estimateModalTitle" class="text-xl font-bold text-slate-800">Add Estimate</h3>
+                    <p class="mt-1 text-sm text-slate-500">Estimate number is assigned automatically.</p>
+                </div>
+                <button type="button" onclick="closeEstimateModal()" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close estimate form">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="estimateForm" onsubmit="submitEstimateForm(event)" class="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
+                <div>
+                    <label for="estimateChainId" class="mb-1.5 block text-sm font-semibold text-slate-700">Chain / Company *</label>
+                    <select id="estimateChainId" required onchange="handleEstimateChainChange()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Loading companies...</option></select>
+                </div>
+                <div>
+                    <label for="estimateGroupName" class="mb-1.5 block text-sm font-semibold text-slate-700">Group *</label>
+                    <input id="estimateGroupName" type="text" readonly required class="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                </div>
+                <div>
+                    <label for="estimateBrandId" class="mb-1.5 block text-sm font-semibold text-slate-700">Brand *</label>
+                    <select id="estimateBrandId" required onchange="handleEstimateBrandChange()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500" disabled><option value="">Select a company first</option></select>
+                </div>
+                <div>
+                    <label for="estimateZoneId" class="mb-1.5 block text-sm font-semibold text-slate-700">Zone *</label>
+                    <select id="estimateZoneId" required class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500" disabled><option value="">Select a brand first</option></select>
+                </div>
+                <div class="md:col-span-2">
+                    <label for="estimateService" class="mb-1.5 block text-sm font-semibold text-slate-700">Service *</label>
+                    <input id="estimateService" type="text" maxlength="255" required placeholder="Describe the service" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label for="estimateQty" class="mb-1.5 block text-sm font-semibold text-slate-700">Quantity *</label>
+                    <input id="estimateQty" type="number" min="1" step="1" required oninput="calculateEstimateTotal()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label for="estimateCostPerUnit" class="mb-1.5 block text-sm font-semibold text-slate-700">Cost per unit (₹) *</label>
+                    <input id="estimateCostPerUnit" type="number" min="0" step="0.01" required oninput="calculateEstimateTotal()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="rounded-xl bg-indigo-50 p-4 md:col-span-2">
+                    <span class="text-sm font-semibold text-indigo-900">Calculated total</span>
+                    <output id="estimateCalculatedTotal" class="ml-2 text-xl font-extrabold text-indigo-700">₹0.00</output>
+                    <p class="mt-1 text-xs text-indigo-700">The server recalculates the amount before saving.</p>
+                </div>
+                <div>
+                    <label for="estimateDeliveryDate" class="mb-1.5 block text-sm font-semibold text-slate-700">Delivery date *</label>
+                    <input id="estimateDeliveryDate" type="date" required class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="estimateDeliveryDetails" class="mb-1.5 block text-sm font-semibold text-slate-700">Delivery details *</label>
+                    <textarea id="estimateDeliveryDetails" maxlength="1000" rows="3" required placeholder="Delivery address, schedule, or instructions" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <p id="estimateFormMessage" class="hidden text-sm text-rose-600 md:col-span-2" role="alert"></p>
+                <div class="flex flex-col-reverse gap-3 pt-2 md:col-span-2 sm:flex-row sm:justify-end">
+                    <button type="button" onclick="closeEstimateModal()" class="rounded-xl border border-slate-200 px-5 py-2.5 font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button id="estimateSubmitButton" type="submit" class="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-md transition hover:bg-indigo-700">Save Estimate</button>
+                </div>
+            </form>
+            <div id="estimateViewDetails" class="hidden space-y-3 px-6 pb-6 text-sm text-slate-700"></div>
+        </div>
     </div>
 
     <!-- PAYMENT MODAL -->

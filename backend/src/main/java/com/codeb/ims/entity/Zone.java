@@ -10,26 +10,26 @@ public class Zone {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "zone_id", columnDefinition = "INT")
-    private Long zoneId;
+    private Integer zoneId;
 
     @Column(name = "zone_name", nullable = false, length = 50)
     private String zoneName;
 
-    @ManyToOne(optional = false)
+    @ManyToOne(optional = true)
     @JoinColumn(
             name = "brand_id",
             referencedColumnName = "brand_id",
-            nullable = false,
+            nullable = true,
             foreignKey = @ForeignKey(name = "fk_zones_brand"))
     private Brand brand;
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "is_active", nullable = false, columnDefinition = "BIT(1)")
     private Boolean isActive = true;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(6)")
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at", nullable = false, columnDefinition = "DATETIME(6)")
     private LocalDateTime updatedAt;
 
     @PrePersist
@@ -52,17 +52,17 @@ public class Zone {
     public Zone() {
     }
 
-    public Zone(Long zoneId, String zoneName, Brand brand) {
+    public Zone(Integer zoneId, String zoneName, Brand brand) {
         this.zoneId = zoneId;
         this.zoneName = zoneName;
         this.brand = brand;
     }
 
-    public Long getZoneId() {
+    public Integer getZoneId() {
         return zoneId;
     }
 
-    public void setZoneId(Long zoneId) {
+    public void setZoneId(Integer zoneId) {
         this.zoneId = zoneId;
     }
 

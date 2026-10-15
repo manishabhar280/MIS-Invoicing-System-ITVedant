@@ -8,12 +8,21 @@ const GROUP_API = `${APP_API_BASE}/groups`;
 const CHAIN_API = `${APP_API_BASE}/chains`;
 const BRAND_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/brands`;
 const ZONE_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/zones`;
+const ESTIMATE_API = isLocalFrontend
+    ? `${LOCAL_API_BASE}/v1/estimates`
+    : `${API_BASE}/estimates`;
 
 let allInvoicesCache = [];
 let chainGroupOptions = [];
 let chainsCache = [];
 let allBrandsCache = [];
 let allZonesCache = [];
+let allEstimatesCache = [];
+let estimateMastersLoaded = false;
+let estimateMastersLoading = false;
+let editingEstimateId = null;
+let estimateReadOnly = false;
+let isSavingEstimate = false;
 let zoneOptionsLoadError = false;
 let zoneRecordsLoading = false;
 let zoneRecordsRequestId = 0;
@@ -254,9 +263,11 @@ function switchTab(tabName) {
                         ? "Brand Management"
                         : tabName === 'zones'
                             ? "Zone Management"
-                    : tabName.charAt(0).toUpperCase() +
-                      tabName.slice(1) +
-                      " Management";
+                            : tabName === 'estimates'
+                                ? "Estimate Management"
+                        : tabName.charAt(0).toUpperCase() +
+                          tabName.slice(1) +
+                          " Management";
         document.getElementById('page-subtitle')
             .innerText = tabName === 'chains'
                 ? "Manage company details, GSTN registration, and group assignments."
@@ -264,6 +275,8 @@ function switchTab(tabName) {
                     ? "Manage brands under their associated companies and groups."
                     : tabName === 'zones'
                         ? "Manage zones under their associated brands, companies, and groups."
+                    : tabName === 'estimates'
+                        ? "Create and track estimates for services and deliveries."
                 : "Manage your " + tabName + " records.";
     }
 
@@ -291,6 +304,10 @@ function switchTab(tabName) {
 
     if (tabName === 'zones') {
         loadZoneManagement();
+    }
+
+    if (tabName === 'estimates') {
+        loadEstimateManagement();
     }
 }
 
@@ -1955,6 +1972,441 @@ async function deactivateZone(zone) {
 
 // ======================================================
 // END ZONE MANAGEMENT
+// ======================================================
+
+
+// ======================================================
+// ESTIMATE MANAGEMENT
+// ======================================================
+
+async function loadEstimateManagement() {
+    const tbody = document.getElementById('estimateTableBody');
+    if (!tbody) return;
+
+    renderEstimateMessage('Loading estimates...', 'loading');
+    setEstimatePageMessage('', 'info');
+    try {
+        const estimates = await fetchZoneCollection(ESTIMATE_API, 'Estimates');
+        allEstimatesCache = estimates;
+        document.getElementById('estimateCount').textContent = String(estimates.length);
+        filterEstimates();
+    } catch (error) {
+        console.error('Estimates Fetch Error:', error);
+        allEstimatesCache = [];
+        document.getElementById('estimateCount').textContent = '—';
+        renderEstimateMessage('Estimates could not be loaded. Check the API and database migration, then retry.', 'error');
+        setEstimatePageMessage('Unable to load estimates. Please check the API connection and database schema.', 'error');
+    }
+}
+
+
+async function loadEstimateMasters() {
+    if (estimateMastersLoading) {
+        while (estimateMastersLoading) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        if (estimateMastersLoaded) return;
+    }
+
+    estimateMastersLoading = true;
+    try {
+        const [chainsResponse, brandsResponse, zonesResponse] = await Promise.all([
+            fetchZoneCollection(`${CHAIN_API}/active`, 'Active companies'),
+            fetchZoneCollection(BRAND_API, 'Brands'),
+            fetchZoneCollection(ZONE_API, 'Zones')
+        ]);
+        chainsCache = chainsResponse
+            .filter(chain => chain.isActive !== false)
+            .map(chain => ({
+                ...chain,
+                chainId: estimateIdString(chain.chainId, 'Chain ID')
+            }));
+        allBrandsCache = brandsResponse
+            .filter(brand => brand.isActive !== false)
+            .map(brand => {
+                const chainId = brand.chainId ?? brand.chain?.chainId;
+                return {
+                    ...brand,
+                    brandId: estimateIdString(brand.brandId, 'Brand ID'),
+                    chainId: chainId == null ? null : estimateIdString(chainId, 'Brand Chain ID')
+                };
+            });
+        allZonesCache = zonesResponse
+            .filter(zone => zone.isActive !== false)
+            .map(zone => {
+                const brandId = zone.brandId ?? zone.brand?.brandId;
+                return {
+                    ...zone,
+                    zoneId: estimateIdString(zone.zoneId, 'Zone ID'),
+                    brandId: brandId == null ? null : estimateIdString(brandId, 'Zone Brand ID')
+                };
+            });
+        populateEstimateOptions();
+        estimateMastersLoaded = true;
+    } finally {
+        estimateMastersLoading = false;
+    }
+}
+
+function estimateIdString(value, label = 'ID') {
+    if (typeof value === 'string' && /^\d+$/.test(value)) {
+        const integer = BigInt(value);
+        if (integer > 0n && integer <= 9223372036854775807n) {
+            return integer.toString();
+        }
+    } else if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) {
+        return String(value);
+    }
+    throw new Error(`${label} must be supplied as an exact positive integer`);
+}
+
+
+function populateEstimateOptions() {
+    populateZoneSelect(
+        document.getElementById('estimateChainId'),
+        chainsCache,
+        chainsCache.length ? 'Select a company' : 'No active companies',
+        chain => chain.companyName || `Company #${chain.chainId}`,
+        chain => chain.chainId
+    );
+    populateEstimateBrands();
+}
+
+
+function populateEstimateBrands(selectedBrandId = '') {
+    const chainId = document.getElementById('estimateChainId').value;
+    const brands = allBrandsCache.filter(brand =>
+        String(brand.chainId ?? brand.chain?.chainId) === chainId);
+    populateZoneSelect(
+        document.getElementById('estimateBrandId'),
+        brands,
+        chainId ? (brands.length ? 'Select a brand' : 'No active brands for this company') : 'Select a company first',
+        brand => brand.brandName || `Brand #${brand.brandId}`,
+        brand => brand.brandId
+    );
+    if (selectedBrandId && brands.some(brand => String(brand.brandId) === String(selectedBrandId))) {
+        document.getElementById('estimateBrandId').value = String(selectedBrandId);
+    }
+    populateEstimateZones();
+}
+
+
+function populateEstimateZones(selectedZoneId = '') {
+    const brandId = document.getElementById('estimateBrandId').value;
+    const zones = allZonesCache.filter(zone =>
+        String(zone.brandId ?? zone.brand?.brandId) === brandId);
+    populateZoneSelect(
+        document.getElementById('estimateZoneId'),
+        zones,
+        brandId ? (zones.length ? 'Select a zone' : 'No active zones for this brand') : 'Select a brand first',
+        zone => zone.zoneName || `Zone #${zone.zoneId}`,
+        zone => zone.zoneId
+    );
+    if (selectedZoneId && zones.some(zone => String(zone.zoneId) === String(selectedZoneId))) {
+        document.getElementById('estimateZoneId').value = String(selectedZoneId);
+    }
+}
+
+
+function handleEstimateChainChange() {
+    const selectedChain = chainsCache.find(chain =>
+        String(chain.chainId) === document.getElementById('estimateChainId').value);
+    document.getElementById('estimateGroupName').value =
+        selectedChain?.group?.groupName || '';
+    populateEstimateBrands();
+}
+
+
+function handleEstimateBrandChange() {
+    populateEstimateZones();
+}
+
+
+function filterEstimates() {
+    const search = document.getElementById('estimateSearch')?.value.trim().toLowerCase() || '';
+    const deliveryDate = document.getElementById('estimateDeliveryFilter')?.value || '';
+    const filtered = allEstimatesCache.filter(estimate => {
+        const searchable = [
+            estimate.estimatedId,
+            estimate.companyName,
+            estimate.groupName,
+            estimate.brandName,
+            estimate.zoneName,
+            estimate.service
+        ].join(' ').toLowerCase();
+        return (!search || searchable.includes(search))
+            && (!deliveryDate || estimate.deliveryDate === deliveryDate);
+    });
+    renderEstimates(filtered);
+}
+
+
+function renderEstimates(estimates) {
+    const tbody = document.getElementById('estimateTableBody');
+    if (!tbody) return;
+    tbody.replaceChildren();
+    if (!estimates.length) {
+        renderEstimateMessage(
+            allEstimatesCache.length ? 'No estimates match the current search or filter.' : 'No estimates have been added yet.',
+            'empty'
+        );
+        return;
+    }
+
+    estimates.forEach(estimate => {
+        const row = document.createElement('tr');
+        row.className = 'transition hover:bg-slate-50';
+        [
+            `EST-${estimate.estimatedId}`,
+            `${estimate.companyName || '—'} / ${estimate.groupName || '—'}`,
+            `${estimate.brandName || '—'} / ${estimate.zoneName || '—'}`,
+            estimate.service || '—',
+            estimate.qty ?? '—',
+            estimate.totalCost == null ? '—' : `₹${estimate.totalCost}`,
+            estimate.deliveryDate || '—'
+        ].forEach(value => {
+            const cell = document.createElement('td');
+            cell.className = 'px-5 py-4 text-slate-700';
+            cell.textContent = String(value);
+            row.appendChild(cell);
+        });
+
+        const actions = document.createElement('td');
+        actions.className = 'px-5 py-4 text-right whitespace-nowrap';
+        actions.appendChild(createEstimateAction('View', 'border-slate-200 text-slate-700 hover:bg-slate-100', () => openEstimateModal(estimate, true)));
+        actions.appendChild(createEstimateAction('Edit', 'border-indigo-200 text-indigo-700 hover:bg-indigo-50', () => openEstimateModal(estimate, false)));
+        row.appendChild(actions);
+        tbody.appendChild(row);
+    });
+}
+
+
+function createEstimateAction(label, classNames, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `mr-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${classNames}`;
+    button.textContent = label;
+    button.addEventListener('click', action);
+    return button;
+}
+
+
+function renderEstimateMessage(message, state) {
+    const tbody = document.getElementById('estimateTableBody');
+    if (!tbody) return;
+    tbody.replaceChildren();
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 8;
+    cell.className = 'px-5 py-10 text-center text-slate-400';
+    if (state === 'loading') {
+        const spinner = document.createElement('i');
+        spinner.className = 'fa-solid fa-spinner fa-spin mr-2';
+        cell.appendChild(spinner);
+    }
+    cell.appendChild(document.createTextNode(message));
+    row.appendChild(cell);
+    tbody.appendChild(row);
+}
+
+
+function setEstimatePageMessage(message, state) {
+    const element = document.getElementById('estimatePageMessage');
+    if (!element) return;
+    element.textContent = message;
+    element.className = message
+        ? state === 'error'
+            ? 'rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700'
+            : 'rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700'
+        : 'hidden';
+}
+
+
+async function openEstimateModal(estimate = null, readOnly = false) {
+    try {
+        await loadEstimateMasters();
+    } catch (error) {
+        console.error('Estimate Options Error:', error);
+        setEstimatePageMessage('Unable to load active Chains, Brands, and Zones. Check the API and retry.', 'error');
+        showToast('Estimate Options Unavailable', 'Active company, brand, and zone options could not be loaded.', 'error');
+        return;
+    }
+
+    const form = document.getElementById('estimateForm');
+    const details = document.getElementById('estimateViewDetails');
+    const modal = document.getElementById('estimateModal');
+    estimateReadOnly = Boolean(estimate && readOnly);
+    editingEstimateId = estimate && !readOnly ? estimate.estimatedId : null;
+    document.getElementById('estimateModalTitle').textContent = estimateReadOnly
+        ? `Estimate EST-${estimate.estimatedId}`
+        : editingEstimateId ? `Edit Estimate EST-${estimate.estimatedId}` : 'Add Estimate';
+    document.getElementById('estimateSubmitButton').textContent = editingEstimateId ? 'Save Changes' : 'Save Estimate';
+    document.getElementById('estimateFormMessage').classList.add('hidden');
+    details.replaceChildren();
+
+    if (estimateReadOnly) {
+        form.classList.add('hidden');
+        details.classList.remove('hidden');
+        const entries = [
+            ['Company', estimate.companyName],
+            ['Group', estimate.groupName],
+            ['Brand', estimate.brandName],
+            ['Zone', estimate.zoneName],
+            ['Service', estimate.service],
+            ['Quantity', estimate.qty],
+            ['Cost per unit', estimate.costPerUnit == null ? '—' : `₹${estimate.costPerUnit}`],
+            ['Total cost', estimate.totalCost == null ? '—' : `₹${estimate.totalCost}`],
+            ['Delivery date', estimate.deliveryDate],
+            ['Delivery details', estimate.deliveryDetails],
+            ['Created', estimate.createdAt || '—'],
+            ['Updated', estimate.updatedAt || '—']
+        ];
+        entries.forEach(([label, value]) => {
+            const item = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = `${label}: `;
+            item.append(strong, document.createTextNode(value == null ? '—' : String(value)));
+            details.appendChild(item);
+        });
+    } else {
+        form.classList.remove('hidden');
+        details.classList.add('hidden');
+        form.reset();
+        document.getElementById('estimateChainId').value = '';
+        document.getElementById('estimateGroupName').value = '';
+        populateEstimateBrands();
+        if (estimate) {
+            document.getElementById('estimateChainId').value = String(estimate.chainId);
+            handleEstimateChainChange();
+            populateEstimateBrands(estimate.brandId);
+            populateEstimateZones(estimate.zoneId);
+            document.getElementById('estimateService').value = estimate.service || '';
+            document.getElementById('estimateQty').value = estimate.qty ?? '';
+            document.getElementById('estimateCostPerUnit').value = estimate.costPerUnit ?? '';
+            document.getElementById('estimateDeliveryDate').value = estimate.deliveryDate || '';
+            document.getElementById('estimateDeliveryDetails').value = estimate.deliveryDetails || '';
+            calculateEstimateTotal();
+        } else {
+            document.getElementById('estimateCalculatedTotal').textContent = '₹0.00';
+        }
+        form.querySelectorAll('input, select, textarea, button[type="submit"]')
+            .forEach(element => { element.disabled = isSavingEstimate; });
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+
+function closeEstimateModal() {
+    if (isSavingEstimate) return;
+    const modal = document.getElementById('estimateModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    editingEstimateId = null;
+    estimateReadOnly = false;
+}
+
+
+function calculateEstimateTotal() {
+    const qtyValue = document.getElementById('estimateQty').value;
+    const costValue = document.getElementById('estimateCostPerUnit').value;
+    const output = document.getElementById('estimateCalculatedTotal');
+    if (!/^[1-9]\d*$/.test(qtyValue) || !/^\d+(\.\d{1,2})?$/.test(costValue)) {
+        output.textContent = '₹0.00';
+        return;
+    }
+    const qty = BigInt(qtyValue);
+    if (qty > 2147483647n) {
+        output.textContent = '₹0.00';
+        return;
+    }
+    const [whole, fraction = ''] = costValue.split('.');
+    const unitCostCents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+    const totalCents = qty * unitCostCents;
+    output.textContent = `₹${totalCents / 100n}.${String(totalCents % 100n).padStart(2, '0')}`;
+}
+
+
+async function submitEstimateForm(event) {
+    event.preventDefault();
+    if (isSavingEstimate || estimateReadOnly) return;
+
+    const form = document.getElementById('estimateForm');
+    const message = document.getElementById('estimateFormMessage');
+    const chainId = document.getElementById('estimateChainId').value;
+    const brandId = document.getElementById('estimateBrandId').value;
+    const zoneId = document.getElementById('estimateZoneId').value;
+    const qty = Number(document.getElementById('estimateQty').value);
+    const costPerUnit = document.getElementById('estimateCostPerUnit').value;
+    const deliveryDate = document.getElementById('estimateDeliveryDate').value;
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    if (![chainId, brandId, zoneId].every(id => {
+        try {
+            return estimateIdString(id) === id;
+        } catch {
+            return false;
+        }
+    })
+        || !Number.isSafeInteger(qty) || qty <= 0 || qty > 2147483647
+        || !/^\d+(\.\d{1,2})?$/.test(costPerUnit)
+        || !deliveryDate
+        || deliveryDate < today.toISOString().slice(0, 10)) {
+        message.textContent = 'Select valid active company, brand, and zone values; use a positive quantity, non-negative cost, and a delivery date that is today or later.';
+        message.classList.remove('hidden');
+        return;
+    }
+
+    const request = {
+        chainId,
+        brandId,
+        zoneId,
+        service: document.getElementById('estimateService').value.trim(),
+        qty,
+        costPerUnit,
+        deliveryDate,
+        deliveryDetails: document.getElementById('estimateDeliveryDetails').value.trim()
+    };
+    isSavingEstimate = true;
+    form.querySelectorAll('input, select, textarea, button[type="submit"]')
+        .forEach(element => { element.disabled = true; });
+
+    try {
+        const response = await fetch(
+            editingEstimateId
+                ? `${ESTIMATE_API}/${encodeURIComponent(editingEstimateId)}`
+                : ESTIMATE_API,
+            {
+                method: editingEstimateId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            }
+        );
+        if (!response.ok) {
+            const details = await response.text();
+            message.textContent = details || `Unable to save estimate (HTTP ${response.status}).`;
+            message.classList.remove('hidden');
+            return;
+        }
+        showToast('Success', editingEstimateId ? 'Estimate updated successfully.' : 'Estimate created successfully.');
+        isSavingEstimate = false;
+        closeEstimateModal();
+        setEstimatePageMessage('', 'info');
+        await loadEstimateManagement();
+    } catch (error) {
+        console.error('Save Estimate Error:', error);
+        message.textContent = 'Unable to connect to the Estimate service. Check the API and try again.';
+        message.classList.remove('hidden');
+    } finally {
+        isSavingEstimate = false;
+        form.querySelectorAll('input, select, textarea, button[type="submit"]')
+            .forEach(element => { element.disabled = false; });
+    }
+}
+
+// ======================================================
+// END ESTIMATE MANAGEMENT
 // ======================================================
 
 

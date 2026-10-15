@@ -47,19 +47,19 @@ public class ZoneController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ZoneResponseDTO> getZoneById(@PathVariable Long id) {
+    public ResponseEntity<ZoneResponseDTO> getZoneById(@PathVariable Integer id) {
         return ResponseEntity.ok(zoneService.getZoneById(id));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ZoneResponseDTO> updateZone(
-            @PathVariable Long id,
+            @PathVariable Integer id,
             @RequestBody ZoneRequestDTO request) {
         return ResponseEntity.ok(zoneService.updateZone(id, request));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ZoneResponseDTO> deactivateZone(@PathVariable Long id) {
+    public ResponseEntity<ZoneResponseDTO> deactivateZone(@PathVariable Integer id) {
         return ResponseEntity.ok(zoneService.deactivateZone(id));
     }
 

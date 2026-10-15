@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 public class Chain {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "chain_id", columnDefinition = "INT")
+    @Column(name = "chain_id")
     private Long chainId;
 
     @Column(name = "company_name", nullable = false, length = 255)
@@ -24,17 +24,17 @@ public class Chain {
     @Column(name = "gstn_no", nullable = false, unique = true, length = 15)
     private String gstnNo;
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "is_active", nullable = false, columnDefinition = "BIT(1)")
     private Boolean isActive = true;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(6)")
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at", nullable = false, columnDefinition = "DATETIME(6)")
     private LocalDateTime updatedAt;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "group_id", nullable = false, columnDefinition = "INT")
+    @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
     @PrePersist

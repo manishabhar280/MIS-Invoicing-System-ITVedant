@@ -3,7 +3,7 @@ package com.codeb.ims.dto;
 import java.time.LocalDateTime;
 
 public class ZoneResponseDTO {
-    private final Long zoneId;
+    private final Integer zoneId;
     private final String zoneName;
     private final Long brandId;
     private final String brandName;
@@ -16,7 +16,7 @@ public class ZoneResponseDTO {
     private final LocalDateTime updatedAt;
 
     public ZoneResponseDTO(
-            Long zoneId,
+            Integer zoneId,
             String zoneName,
             Long brandId,
             String brandName,
@@ -40,7 +40,7 @@ public class ZoneResponseDTO {
         this.updatedAt = updatedAt;
     }
 
-    public Long getZoneId() {
+    public Integer getZoneId() {
         return zoneId;
     }
 

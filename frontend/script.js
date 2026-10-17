@@ -1,4 +1,5 @@
-const API_BASE = "https://mis-invoicing-system-production-c653.up.railway.app/api/v1";
+const API_BASE = (document.querySelector('meta[name="ims-api-base"]')?.content
+    || 'https://mis-invoicing-system-production-c653.up.railway.app/api/v1').trim().replace(/\/+$/, '');
 
 const LOCAL_API_BASE = "http://localhost:8080/api";
 const isLocalFrontend = window.location.protocol === 'file:'
@@ -11,8 +12,15 @@ const ZONE_API = `${isLocalFrontend ? LOCAL_API_BASE : API_BASE}/zones`;
 const ESTIMATE_API = isLocalFrontend
     ? `${LOCAL_API_BASE}/v1/estimates`
     : `${API_BASE}/estimates`;
+const INVOICE_API = `${APP_API_BASE}/v1/invoices`;
+const PAYMENT_API = `${APP_API_BASE}/v1/payments`;
 
 let allInvoicesCache = [];
+let basicAuthHeader = null;
+let authenticatedUser = '';
+let authenticatedRoles = [];
+let invoiceEstimateCache = null;
+let isSavingInvoice = false;
 let chainGroupOptions = [];
 let chainsCache = [];
 let allBrandsCache = [];
@@ -72,20 +80,14 @@ function showToast(title, message, type = "success") {
 }
 
 
-// Session Strict Guard Function
 function enforceSessionGuard() {
-
-    const activeUser = localStorage.getItem('ims_session_user');
-
     const authContainer = document.getElementById('auth-container');
     const appContainer = document.getElementById('app-container');
 
-    if (activeUser && activeUser.trim() !== "") {
-
+    if (basicAuthHeader) {
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
-
-        document.getElementById('activeUserDisplay').innerText = activeUser;
+        document.getElementById('activeUserDisplay').innerText = authenticatedUser;
 
         loadClients();
         loadInvoices();
@@ -95,123 +97,100 @@ function enforceSessionGuard() {
         switchTab('dashboard');
 
     } else {
-
+        authenticatedUser = '';
+        authenticatedRoles = [];
         appContainer.classList.add('hidden');
         authContainer.classList.remove('hidden');
     }
 }
 
+function showAccountRequest() {
+    document.getElementById('card-login').classList.add('hidden');
+    document.getElementById('card-account-request').classList.remove('hidden');
+}
 
-// Toggle between Login and Register cards
-function toggleAuthMode(mode) {
+function showLoginForm() {
+    document.getElementById('card-account-request').classList.add('hidden');
+    document.getElementById('card-login').classList.remove('hidden');
+    document.getElementById('loginUser').focus();
+}
 
-    if (mode === 'register') {
+function createBasicHeader(username, password) {
+    const bytes = new TextEncoder().encode(`${username}:${password}`);
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return `Basic ${btoa(binary)}`;
+}
 
-        document.getElementById('card-login').classList.add('hidden');
-        document.getElementById('card-register').classList.remove('hidden');
+async function invoiceFetch(url, options = {}) {
+    if (!basicAuthHeader) {
+        throw new Error('Sign in again to continue.');
+    }
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', basicAuthHeader);
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+        basicAuthHeader = null;
+        enforceSessionGuard();
+        throw new Error('Your session expired. Please sign in again.');
+    }
+    return response;
+}
 
-    } else {
-
-        document.getElementById('card-register').classList.add('hidden');
-        document.getElementById('card-login').classList.remove('hidden');
+async function responseError(response, fallback) {
+    try {
+        const result = await response.json();
+        return result.message || fallback;
+    } catch {
+        return fallback;
     }
 }
 
-
-// Handle User Registration
-function handleRegister(e) {
-
+async function handleLogin(e) {
     e.preventDefault();
-
-    const name = document.getElementById('regName').value.trim();
-    const user = document.getElementById('regUser').value.trim();
-    const pass = document.getElementById('regPass').value.trim();
-
-    if (user && pass) {
-
-        const usersDB =
-            JSON.parse(localStorage.getItem('ims_registered_users') || '{}');
-
-        usersDB[user] = {
-            name: name,
-            pass: pass
-        };
-
-        localStorage.setItem(
-            'ims_registered_users',
-            JSON.stringify(usersDB)
-        );
-
-        // Clear input fields
-        document.getElementById('regName').value = '';
-        document.getElementById('regUser').value = '';
-        document.getElementById('regPass').value = '';
-
-        showToast(
-            "Success",
-            "Account created successfully! Please sign in."
-        );
-
-        toggleAuthMode('login');
-    }
-}
-
-
-// Handle User Sign In
-function handleLogin(e) {
-
-    e.preventDefault();
-
     const user = document.getElementById('loginUser').value.trim();
-    const pass = document.getElementById('loginPass').value.trim();
+    const pass = document.getElementById('loginPass').value;
+    const message = document.getElementById('loginMessage');
+    const submit = e.currentTarget.querySelector('button[type="submit"]');
+    message.classList.add('hidden');
+    submit.disabled = true;
+    submit.textContent = 'Signing in...';
+    const candidate = createBasicHeader(user, pass);
 
-    const usersDB =
-        JSON.parse(localStorage.getItem('ims_registered_users') || '{}');
-
-    if (usersDB[user] && usersDB[user].pass === pass) {
-
-        localStorage.setItem(
-            'ims_session_user',
-            usersDB[user].name || user
-        );
-
-        showToast(
-            "Welcome",
-            "Signed in successfully!"
-        );
-
+    try {
+        const response = await fetch(`${INVOICE_API}/session`, {
+            headers: { Authorization: candidate }
+        });
+        if (!response.ok) {
+            message.textContent = response.status === 401 || response.status === 403
+                ? 'Sign-in failed. Check your assigned username and password.'
+                : await responseError(response, `Sign-in failed (HTTP ${response.status}).`);
+            message.classList.remove('hidden');
+            return;
+        }
+        const session = await response.json();
+        basicAuthHeader = candidate;
+        authenticatedUser = session.username || user;
+        authenticatedRoles = Array.isArray(session.roles) ? session.roles : [];
+        document.getElementById('loginPass').value = '';
         enforceSessionGuard();
-
-    } else if (user === "admin" && pass === "admin") {
-
-        localStorage.setItem(
-            'ims_session_user',
-            "Admin User"
-        );
-
-        showToast(
-            "Welcome",
-            "Signed in as Admin!"
-        );
-
-        enforceSessionGuard();
-
-    } else {
-
-        showToast(
-            "Authentication Failed",
-            "Invalid credentials. Please try again.",
-            "error"
-        );
+        showToast('Welcome', `Signed in as ${authenticatedUser}.`);
+    } catch (error) {
+        console.error('Sign-in Error:', error);
+        message.textContent = error.message || 'Unable to connect to the invoice service.';
+        message.classList.remove('hidden');
+    } finally {
+        submit.disabled = false;
+        submit.textContent = 'Sign In';
     }
 }
 
 
 // Handle User Logout
 function handleLogout() {
-
-    localStorage.removeItem('ims_session_user');
-
+    basicAuthHeader = null;
+    authenticatedUser = '';
+    authenticatedRoles = [];
     showToast(
         "Logged Out",
         "You have been logged out."
@@ -340,65 +319,52 @@ async function loadGroups() {
 
         if (tbody) {
 
-            tbody.innerHTML = '';
+            tbody.replaceChildren();
 
             groups.forEach(group => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-slate-100 transition hover:bg-slate-50';
 
-                const status =
-                    group.isActive
-                        ? "Active"
-                        : "Inactive";
+                const idCell = document.createElement('td');
+                idCell.className = 'px-6 py-3.5 font-bold text-indigo-600';
+                idCell.textContent = `#${group.groupId}`;
 
-                tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                const nameCell = document.createElement('td');
+                nameCell.className = 'px-6 py-3.5 font-semibold text-slate-800';
+                nameCell.textContent = group.groupName || '—';
 
-                        <td class="py-3.5 px-6 font-bold text-indigo-600">
-                            #${group.groupId}
-                        </td>
+                const statusCell = document.createElement('td');
+                statusCell.className = 'px-6 py-3.5';
+                const status = document.createElement('span');
+                status.className = group.isActive
+                    ? 'rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700'
+                    : 'rounded-full border border-rose-200 bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700';
+                status.textContent = group.isActive ? 'Active' : 'Inactive';
+                statusCell.appendChild(status);
 
-                        <td class="py-3.5 px-6 font-semibold text-slate-800">
-                            ${group.groupName}
-                        </td>
+                const actionsCell = document.createElement('td');
+                actionsCell.className = 'px-6 py-3.5 text-center';
+                const editButton = document.createElement('button');
+                editButton.className = 'mr-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700';
+                editButton.textContent = 'Edit';
+                editButton.addEventListener('click', () => editGroup(group.groupId, group.groupName));
+                actionsCell.appendChild(editButton);
 
-                        <td class="py-3.5 px-6">
-                            <span class="${
-                                group.isActive
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : 'bg-rose-100 text-rose-700 border border-rose-200'
-                            } text-xs font-bold px-3 py-1 rounded-full">
-                                ${status}
-                            </span>
-                        </td>
+                const statusButton = document.createElement('button');
+                statusButton.className = group.isActive
+                    ? 'rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700'
+                    : 'rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700';
+                statusButton.textContent = group.isActive ? 'Deactivate' : 'Activate';
+                statusButton.addEventListener(
+                    'click',
+                    () => group.isActive
+                        ? deactivateGroup(group.groupId)
+                        : activateGroup(group.groupId)
+                );
+                actionsCell.appendChild(statusButton);
 
-                        <td class="py-3.5 px-6 text-center">
-
-                            <button
-                                onclick="editGroup(${group.groupId}, '${group.groupName.replace(/'/g, "\\'")}')"
-                                class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg mr-2">
-                                Edit
-                            </button>
-
-                            ${
-                                group.isActive
-                                ? `
-                                    <button
-                                        onclick="deactivateGroup(${group.groupId})"
-                                        class="text-xs bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg">
-                                        Deactivate
-                                    </button>
-                                  `
-                                : `
-                                    <button
-                                        onclick="activateGroup(${group.groupId})"
-                                        class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg">
-                                        Activate
-                                    </button>
-                                  `
-                            }
-                        </td>
-
-                    </tr>
-                `;
+                row.append(idCell, nameCell, statusCell, actionsCell);
+                tbody.appendChild(row);
             });
         }
 
@@ -1483,7 +1449,7 @@ async function deactivateBrand(brand) {
 // ======================================================
 
 async function handleZoneUnauthorized() {
-    localStorage.removeItem('ims_session_user');
+    basicAuthHeader = null;
     enforceSessionGuard();
     showToast('Session Expired', 'Please sign in again to continue.', 'error');
 }
@@ -2175,6 +2141,19 @@ function renderEstimates(estimates) {
         actions.className = 'px-5 py-4 text-right whitespace-nowrap';
         actions.appendChild(createEstimateAction('View', 'border-slate-200 text-slate-700 hover:bg-slate-100', () => openEstimateModal(estimate, true)));
         actions.appendChild(createEstimateAction('Edit', 'border-indigo-200 text-indigo-700 hover:bg-indigo-50', () => openEstimateModal(estimate, false)));
+        const linkedInvoice = allInvoicesCache.find(invoice =>
+            String(invoice.estimateId || '') === String(estimate.estimatedId || '')
+        );
+        const generate = createEstimateAction(
+            linkedInvoice ? 'Invoiced' : 'Generate Invoice',
+            linkedInvoice
+                ? 'border-slate-200 text-slate-400 cursor-not-allowed'
+                : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
+            () => openInvoiceFromEstimate(estimate.estimatedId)
+        );
+        generate.disabled = Boolean(linkedInvoice);
+        generate.title = linkedInvoice ? 'An invoice already exists for this estimate.' : 'Create an invoice from server-loaded estimate details.';
+        actions.appendChild(generate);
         row.appendChild(actions);
         tbody.appendChild(row);
     });
@@ -2410,100 +2389,6 @@ async function submitEstimateForm(event) {
 // ======================================================
 
 
-// Multi-item Invoice Row Management
-function addItemRow() {
-
-    const container =
-        document.getElementById('itemsContainer');
-
-    const div =
-        document.createElement('div');
-
-    div.className =
-        'item-row grid grid-cols-12 gap-2.5';
-
-    div.innerHTML = `
-
-        <input
-            type="text"
-            placeholder="Item Description"
-            required
-            class="col-span-6 px-3.5 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900">
-
-        <input
-            type="number"
-            placeholder="Qty"
-            required
-            min="1"
-            value="1"
-            oninput="calculateInvoiceTotal()"
-            class="item-qty col-span-2 px-3.5 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900">
-
-        <input
-            type="number"
-            step="0.01"
-            placeholder="Rate (₹)"
-            required
-            oninput="calculateInvoiceTotal()"
-            class="item-rate col-span-3 px-3.5 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900">
-
-        <button
-            type="button"
-            onclick="removeItemRow(this)"
-            class="col-span-1 text-slate-400 hover:text-rose-600 flex items-center justify-center transition">
-
-            <i class="fa-solid fa-trash-can"></i>
-
-        </button>
-    `;
-
-    container.appendChild(div);
-}
-
-
-function removeItemRow(btn) {
-
-    if (
-        document.querySelectorAll('.item-row').length > 1
-    ) {
-
-        btn.parentElement.remove();
-
-        calculateInvoiceTotal();
-    }
-}
-
-
-function calculateInvoiceTotal() {
-
-    let taxable = 0;
-
-    document.querySelectorAll('.item-row')
-        .forEach(row => {
-
-            const qty =
-                parseFloat(
-                    row.querySelector('.item-qty').value
-                ) || 0;
-
-            const rate =
-                parseFloat(
-                    row.querySelector('.item-rate').value
-                ) || 0;
-
-            taxable += (qty * rate);
-        });
-
-    const total =
-        taxable + (taxable * 0.18);
-
-    document.getElementById('computedTotal').innerText =
-        `₹${total.toFixed(2)}`;
-
-    return taxable;
-}
-
-
 // Client Management Functions
 async function addClient(e) {
 
@@ -2592,18 +2477,16 @@ async function loadClients() {
                 'stat-client-count'
             ).innerText = clients.length;
 
-            const select =
-                document.getElementById('invoiceClientId');
-
             const tbody =
                 document.getElementById('clientsTableBody');
 
-            if (select)
-                select.innerHTML =
-                    '<option value="">-- Select Client --</option>';
+            const select = document.getElementById('invoiceClientId');
+            if (select) {
+                select.replaceChildren(new Option('-- Select Client --', ''));
+            }
 
             if (tbody)
-                tbody.innerHTML = '';
+                tbody.replaceChildren();
 
             clients.forEach(c => {
 
@@ -2611,36 +2494,24 @@ async function loadClients() {
                     c.clientId || c.id;
 
                 if (select)
-                    select.innerHTML +=
-                        `<option value="${cId}">
-                            ${c.clientName}
-                            (${c.organizationName || 'N/A'})
-                        </option>`;
+                    select.add(new Option(
+                        `${c.clientName} (${c.organizationName || 'N/A'})`,
+                        cId
+                    ));
 
                 if (tbody) {
-
-                    tbody.innerHTML += `
-
-                        <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-
-                            <td class="py-3.5 px-6 font-bold text-indigo-600">
-                                #${cId}
-                            </td>
-
-                            <td class="py-3.5 px-6 font-semibold text-slate-800">
-                                ${c.clientName}
-                            </td>
-
-                            <td class="py-3.5 px-6 text-slate-500">
-                                ${c.organizationName || '-'}
-                            </td>
-
-                            <td class="py-3.5 px-6 text-slate-500 font-mono">
-                                ${c.gstNumber || '-'}
-                            </td>
-
-                        </tr>
-                    `;
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-slate-100 transition hover:bg-slate-50';
+                    [`#${cId}`, c.clientName || '—', c.organizationName || '—', c.gstNumber || '—']
+                        .forEach((value, index) => {
+                            const cell = document.createElement('td');
+                            cell.className = index === 0
+                                ? 'px-6 py-3.5 font-bold text-indigo-600'
+                                : 'px-6 py-3.5 text-slate-600';
+                            cell.textContent = String(value);
+                            row.appendChild(cell);
+                        });
+                    tbody.appendChild(row);
                 }
             });
         }
@@ -2655,434 +2526,392 @@ async function loadClients() {
 }
 
 
-// Invoice Management Functions
-async function createMultiItemInvoice(e) {
-
-    e.preventDefault();
-
-    const taxable =
-        calculateInvoiceTotal();
-
-    const selectedClientId =
-        document.getElementById('invoiceClientId').value;
-
-    if (!selectedClientId) {
-
-        showToast(
-            "Validation Error",
-            "Please select a client first!",
-            "error"
-        );
-
-        return;
-    }
-
-    const data = {
-        clientId: parseInt(selectedClientId),
-        taxableAmount: taxable
-    };
-
-    try {
-
-        const res =
-            await fetch(
-                `${API_BASE}/invoices/generate`,
-                {
-                    method: 'POST',
-
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-
-                    body: JSON.stringify(data)
-                }
-            );
-
-        if (res.ok) {
-
-            showToast(
-                "Invoice Generated",
-                "Invoice generated and saved successfully!"
-            );
-
-            document.getElementById(
-                'invoiceForm'
-            ).reset();
-
-            calculateInvoiceTotal();
-
-            loadInvoices();
-
-        } else {
-
-            showToast(
-                "Error",
-                "Failed to generate invoice.",
-                "error"
-            );
-        }
-
-    } catch (e) {
-
-        console.error(
-            "Create Invoice Error:",
-            e
-        );
-
-        showToast(
-            "Error",
-            "Network error while generating invoice.",
-            "error"
-        );
-    }
-}
-
-
 async function loadInvoices() {
-
     try {
-
-        const res =
-            await fetch(`${API_BASE}/invoices`);
-
-        if (res.ok) {
-
-            allInvoicesCache =
-                await res.json();
-
-            document.getElementById(
-                'stat-invoice-count'
-            ).innerText =
-                allInvoicesCache.length;
-
-            let pendingDues = 0;
-
-            allInvoicesCache.forEach(inv => {
-
-                if (inv.status === 'UNPAID')
-                    pendingDues +=
-                        (inv.totalAmount || 0);
-            });
-
-            document.getElementById(
-                'stat-pending'
-            ).innerText =
-                `₹${pendingDues.toFixed(2)}`;
-
-            renderInvoicesTable(
-                allInvoicesCache
-            );
+        const response = await invoiceFetch(INVOICE_API);
+        if (!response.ok) {
+            throw new Error(await responseError(response, `Invoice list failed (HTTP ${response.status}).`));
         }
-
-    } catch (e) {
-
-        console.error(
-            "Invoices Fetch Error:",
-            e
+        allInvoicesCache = await response.json();
+        document.getElementById('stat-invoice-count').innerText = allInvoicesCache.length;
+        const pendingDues = allInvoicesCache.reduce(
+            (total, invoice) => total + Number(invoice.balanceDue || 0),
+            0
         );
+        document.getElementById('stat-pending').innerText = `₹${pendingDues.toFixed(2)}`;
+        renderInvoicesTable(allInvoicesCache);
+        if (document.getElementById('estimateTableBody') && allEstimatesCache.length) {
+            filterEstimates();
+        }
+    } catch (e) {
+        console.error('Invoices Fetch Error:', e);
+        if (basicAuthHeader) showToast('Invoice Error', e.message || 'Unable to load invoices.', 'error');
     }
 }
 
 
 function renderInvoicesTable(invoices) {
+    const tbody = document.getElementById('invoiceTableBody');
+    tbody.replaceChildren();
+    invoices.forEach(invoice => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-slate-100 transition hover:bg-slate-50';
+        const values = [
+            invoice.invoiceNumber || `#${invoice.id}`,
+            invoice.customerName || invoice.companyName || '—',
+            `₹${Number(invoice.taxableAmount || 0).toFixed(2)}`,
+            `₹${Number(invoice.gstAmount || 0).toFixed(2)}`,
+            `₹${Number(invoice.totalAmount || 0).toFixed(2)} / ₹${Number(invoice.balanceDue || 0).toFixed(2)}`
+        ];
+        values.forEach((value, index) => {
+            const cell = document.createElement('td');
+            cell.className = `px-6 py-3.5 text-slate-700 ${index === 4 ? 'font-bold' : ''}`;
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
 
-    const tbody =
-        document.getElementById(
-            'invoiceTableBody'
-        );
+        const statusCell = document.createElement('td');
+        statusCell.className = 'px-6 py-3.5 text-center';
+        const badge = document.createElement('span');
+        badge.className = invoice.status === 'PAID'
+            ? 'rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700'
+            : invoice.status === 'PARTIALLY_PAID'
+                ? 'rounded-full border border-indigo-200 bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700'
+                : 'rounded-full border border-amber-200 bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700';
+        badge.textContent = (invoice.status || 'UNPAID').replace('_', ' ');
+        statusCell.appendChild(badge);
+        row.appendChild(statusCell);
 
-    tbody.innerHTML = '';
-
-    invoices.forEach(inv => {
-
-        // Support both invoiceId and id from backend
-        const invId =
-            inv.invoiceId || inv.id;
-
-        const statusBadge =
-            inv.status === 'PAID'
-
-                ? `<span class="bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full">PAID</span>`
-
-                : `<span class="bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-1 rounded-full">UNPAID</span>`;
-
-        const actionBtn =
-            inv.status === 'UNPAID'
-
-                ? `<button
-                        onclick="openPaymentModal(${invId}, ${inv.totalAmount})"
-                        class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-sm transition">
-                        Pay
-                   </button>`
-
-                : '';
-
-        tbody.innerHTML += `
-
-            <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-
-                <td class="py-3.5 px-6 font-bold text-indigo-600">
-                    #INV-${invId}
-                </td>
-
-                <td class="py-3.5 px-6 text-slate-600">
-                    Client #${
-                        inv.client
-                            ? (
-                                inv.client.id ??
-                                inv.client.clientId ??
-                                inv.client.client_id
-                              )
-                            : (
-                                inv.clientId ??
-                                inv.client_id ??
-                                'N/A'
-                              )
-                    }
-                </td>
-
-                <td class="py-3.5 px-6 text-slate-600">
-                    ₹${(inv.taxableAmount || 0).toFixed(2)}
-                </td>
-
-                <td class="py-3.5 px-6 text-slate-500">
-                    ₹${(inv.gstAmount || 0).toFixed(2)}
-                </td>
-
-                <td class="py-3.5 px-6 font-bold text-slate-900">
-                    ₹${(inv.totalAmount || 0).toFixed(2)}
-                </td>
-
-                <td class="py-3.5 px-6 text-center">
-                    ${statusBadge}
-                </td>
-
-                <td class="py-3.5 px-6 text-center">
-                    ${actionBtn}
-                </td>
-
-            </tr>
-        `;
+        const actions = document.createElement('td');
+        actions.className = 'whitespace-nowrap px-6 py-3.5 text-center';
+        actions.appendChild(createInvoiceAction('View', () => viewInvoice(invoice.id)));
+        actions.appendChild(createInvoiceAction('PDF', () => downloadInvoicePdf(invoice.id)));
+        if (authenticatedRoles.includes('ADMIN')) {
+            actions.appendChild(createInvoiceAction('Email', () => openInvoiceEmail(invoice)));
+        }
+        if (Number(invoice.balanceDue || 0) > 0) {
+            actions.appendChild(createInvoiceAction('Pay', () => openPaymentModal(invoice.id, invoice.balanceDue)));
+        }
+        row.appendChild(actions);
+        tbody.appendChild(row);
     });
 }
 
+function createInvoiceAction(label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mr-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100';
+    button.textContent = label;
+    button.addEventListener('click', action);
+    return button;
+}
 
 function filterInvoices() {
-
-    const searchVal =
-        document.getElementById(
-            'searchInput'
-        ).value.toLowerCase();
-
-    const statusVal =
-        document.getElementById(
-            'statusFilter'
-        ).value;
-
-    const filtered =
-        allInvoicesCache.filter(inv => {
-
-            const matchesSearch =
-                inv.invoiceId
-                    .toString()
-                    .includes(searchVal);
-
-            const matchesStatus =
-                (statusVal === 'ALL') ||
-                (inv.status === statusVal);
-
-            return matchesSearch &&
-                   matchesStatus;
-        });
-
+    const search = document.getElementById('searchInput').value.trim().toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    const filtered = allInvoicesCache.filter(invoice =>
+        (!search || `${invoice.invoiceNumber || ''} ${invoice.id || ''} ${invoice.customerName || ''}`.toLowerCase().includes(search))
+        && (status === 'ALL' || invoice.status === status)
+    );
     renderInvoicesTable(filtered);
 }
 
+async function openInvoiceFromEstimate(estimateId) {
+    const message = document.getElementById('invoiceFormMessage');
+    message.classList.add('hidden');
+    document.getElementById('invoiceSubmitButton').disabled = true;
+    document.getElementById('invoiceModalTitle').textContent = 'Loading estimate...';
+    const modal = document.getElementById('invoiceModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    try {
+        const response = await invoiceFetch(`${INVOICE_API}/estimates/${encodeURIComponent(estimateId)}`);
+        if (!response.ok) {
+            throw new Error(await responseError(response, `Estimate lookup failed (HTTP ${response.status}).`));
+        }
+        const estimate = await response.json();
+        if (estimate.alreadyInvoiced) {
+            throw new Error('This estimate already has an invoice.');
+        }
+        invoiceEstimateCache = estimate;
+        document.getElementById('invoiceModalTitle').textContent = `Create invoice from EST-${estimate.estimateId}`;
+        document.getElementById('invoiceEstimateId').value = estimate.estimateId;
+        document.getElementById('invoiceQuantity').value = estimate.quantity ?? '';
+        document.getElementById('invoiceUnitPrice').value = estimate.unitPrice ?? '';
+        document.getElementById('invoiceClientEmail').value = '';
+        document.getElementById('invoiceServiceDate').value = localDateString(new Date());
+        document.getElementById('invoiceDeliveryDetails').value = estimate.deliveryDetails || '';
+        document.getElementById('invoicePaymentInstructions').value = '';
+        const summary = document.getElementById('invoiceEstimateSummary');
+        summary.replaceChildren();
+        [
+            ['Estimate', `EST-${estimate.estimateId}`],
+            ['Company', estimate.companyName],
+            ['Company GSTIN', estimate.companyGstnNo || 'Not provided'],
+            ['Customer', estimate.customerName],
+            ['Organization', estimate.customerOrganization],
+            ['Service', estimate.serviceDescription],
+            ['Estimate total', estimate.estimatedTotal == null ? '—' : `₹${estimate.estimatedTotal}`]
+        ].forEach(([label, value]) => {
+            const item = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = `${label}: `;
+            item.append(strong, document.createTextNode(value == null ? '—' : String(value)));
+            summary.appendChild(item);
+        });
+        document.getElementById('invoiceSubmitButton').disabled = false;
+    } catch (error) {
+        console.error('Estimate Invoice Lookup Error:', error);
+        message.textContent = error.message || 'Unable to load estimate details.';
+        message.className = 'rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700';
+        message.classList.remove('hidden');
+        document.getElementById('invoiceModalTitle').textContent = 'Create Invoice';
+        document.getElementById('invoiceSubmitButton').disabled = true;
+    }
+}
+
+function localDateString(date) {
+    const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return adjusted.toISOString().slice(0, 10);
+}
+
+function closeInvoiceModal() {
+    if (isSavingInvoice) return;
+    const modal = document.getElementById('invoiceModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    invoiceEstimateCache = null;
+}
+
+async function submitInvoice(event) {
+    event.preventDefault();
+    if (isSavingInvoice || !invoiceEstimateCache) return;
+    const message = document.getElementById('invoiceFormMessage');
+    const request = {
+        estimateId: invoiceEstimateCache.estimateId,
+        clientEmail: document.getElementById('invoiceClientEmail').value.trim() || null,
+        serviceDate: document.getElementById('invoiceServiceDate').value || null,
+        deliveryDetails: document.getElementById('invoiceDeliveryDetails').value.trim() || null,
+        paymentInstructions: document.getElementById('invoicePaymentInstructions').value.trim() || null
+    };
+    isSavingInvoice = true;
+    document.getElementById('invoiceSubmitButton').disabled = true;
+    message.textContent = 'Creating invoice...';
+    message.className = 'rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700';
+    message.classList.remove('hidden');
+    try {
+        const response = await invoiceFetch(INVOICE_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request)
+        });
+        if (!response.ok) {
+            throw new Error(await responseError(response, `Invoice creation failed (HTTP ${response.status}).`));
+        }
+        const invoice = await response.json();
+        closeInvoiceModal();
+        showToast('Invoice created', `${invoice.invoiceNumber} was created successfully.`);
+        await Promise.all([loadInvoices(), loadPayments()]);
+    } catch (error) {
+        console.error('Create Invoice Error:', error);
+        message.textContent = error.message || 'Unable to create invoice.';
+        message.className = 'rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700';
+        message.classList.remove('hidden');
+    } finally {
+        isSavingInvoice = false;
+        document.getElementById('invoiceSubmitButton').disabled = false;
+    }
+}
+
+async function viewInvoice(id) {
+    try {
+        const response = await invoiceFetch(`${INVOICE_API}/${encodeURIComponent(id)}`);
+        if (!response.ok) throw new Error(await responseError(response, `Invoice lookup failed (HTTP ${response.status}).`));
+        const invoice = await response.json();
+        const body = document.getElementById('invoiceDetailsBody');
+        body.replaceChildren();
+        const fields = [
+            ['Invoice', invoice.invoiceNumber || `#${invoice.id}`],
+            ['Estimate', invoice.estimateId ? `EST-${invoice.estimateId}` : 'Legacy invoice'],
+            ['Company', invoice.companyName],
+            ['GSTIN', invoice.companyGstnNo],
+            ['Customer', invoice.customerName],
+            ['Organization', invoice.customerOrganization],
+            ['Email', invoice.clientEmail],
+            ['Service', invoice.serviceDescription],
+            ['Quantity / rate', `${invoice.quantity ?? '—'} / ₹${invoice.unitPrice ?? '—'}`],
+            ['Total / paid / balance', `₹${invoice.totalAmount} / ₹${invoice.amountPaid} / ₹${invoice.balanceDue}`],
+            ['Status', invoice.status],
+            ['Invoice / service date', `${invoice.invoiceDate || '—'} / ${invoice.serviceDate || '—'}`],
+            ['Delivery', invoice.deliveryDetails],
+            ['Payment details', invoice.paymentInstructions]
+        ];
+        fields.forEach(([label, value]) => {
+            const line = document.createElement('p');
+            const title = document.createElement('strong');
+            title.textContent = `${label}: `;
+            line.append(title, document.createTextNode(value == null || value === '' ? '—' : String(value)));
+            body.appendChild(line);
+        });
+        document.getElementById('invoiceDetailsTitle').textContent = invoice.invoiceNumber || `Invoice #${invoice.id}`;
+        const modal = document.getElementById('invoiceDetailsModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    } catch (error) {
+        showToast('Invoice Error', error.message || 'Unable to load invoice details.', 'error');
+    }
+}
+
+function closeInvoiceDetails() {
+    const modal = document.getElementById('invoiceDetailsModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+async function downloadInvoicePdf(id) {
+    try {
+        const response = await invoiceFetch(`${INVOICE_API}/${encodeURIComponent(id)}/pdf`);
+        if (!response.ok) throw new Error(await responseError(response, `PDF download failed (HTTP ${response.status}).`));
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `invoice-${id}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        showToast('PDF Error', error.message || 'Unable to download invoice PDF.', 'error');
+    }
+}
+
+function openInvoiceEmail(invoice) {
+    document.getElementById('emailInvoiceId').value = invoice.id;
+    document.getElementById('invoiceRecipientEmail').value = invoice.clientEmail || '';
+    document.getElementById('invoiceEmailMessage').classList.add('hidden');
+    const modal = document.getElementById('invoiceEmailModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeInvoiceEmail() {
+    const modal = document.getElementById('invoiceEmailModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+async function sendInvoiceEmail(event) {
+    event.preventDefault();
+    const id = document.getElementById('emailInvoiceId').value;
+    const message = document.getElementById('invoiceEmailMessage');
+    const button = document.getElementById('invoiceEmailSubmit');
+    button.disabled = true;
+    message.classList.add('hidden');
+    try {
+        const response = await invoiceFetch(`${INVOICE_API}/${encodeURIComponent(id)}/email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipientEmail: document.getElementById('invoiceRecipientEmail').value.trim() })
+        });
+        if (!response.ok) throw new Error(await responseError(response, `Email failed (HTTP ${response.status}).`));
+        closeInvoiceEmail();
+        showToast('Email sent', 'The invoice email was accepted by the configured SMTP server.');
+    } catch (error) {
+        message.textContent = error.message || 'Invoice email could not be sent.';
+        message.classList.remove('hidden');
+    } finally {
+        button.disabled = false;
+    }
+}
 
 // Payment Modal and Processing Functions
+let activePaymentIdempotencyKey = null;
+
 function openPaymentModal(id, amount) {
-
-    document.getElementById(
-        'modalInvoiceId'
-    ).innerText =
-        `#INV-${id}`;
-
-    document.getElementById(
-        'modalInvIdVal'
-    ).value = id;
-
-    document.getElementById(
-        'modalAmount'
-    ).value = amount;
-
-    document.getElementById(
-        'paymentModal'
-    ).classList.remove('hidden');
+    document.getElementById('modalInvoiceId').innerText = `#${id}`;
+    document.getElementById('modalInvIdVal').value = id;
+    document.getElementById('modalAmount').value = Number(amount).toFixed(2);
+    document.getElementById('modalAmount').max = Number(amount).toFixed(2);
+    document.getElementById('paymentModal').classList.remove('hidden');
+    activePaymentIdempotencyKey = createIdempotencyKey();
 }
 
 
 function closePaymentModal() {
-
-    document.getElementById(
-        'paymentModal'
-    ).classList.add('hidden');
+    document.getElementById('paymentModal').classList.add('hidden');
+    activePaymentIdempotencyKey = null;
 }
 
+function createIdempotencyKey() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+}
 
 async function submitPayment(e) {
-
     e.preventDefault();
-
     const data = {
-
-        invoiceId:
-            parseInt(
-                document.getElementById(
-                    'modalInvIdVal'
-                ).value
-            ),
-
-        amountPaid:
-            parseFloat(
-                document.getElementById(
-                    'modalAmount'
-                ).value
-            ),
-
-        paymentMode:
-            document.getElementById(
-                'modalMode'
-            ).value
+        invoiceId: document.getElementById('modalInvIdVal').value,
+        amount: document.getElementById('modalAmount').value,
+        paymentMode: document.getElementById('modalMode').value,
+        idempotencyKey: activePaymentIdempotencyKey,
+        paymentDate: localDateString(new Date())
     };
-
+    const button = e.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
     try {
-
-        const res =
-            await fetch(
-                `${API_BASE}/payments`,
-                {
-                    method: 'POST',
-
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-
-                    body: JSON.stringify(data)
-                }
-            );
-
-        if (res.ok) {
-
-            closePaymentModal();
-
-            showToast(
-                "Payment Recorded",
-                "Payment processed successfully!"
-            );
-
-            loadInvoices();
-            loadPayments();
-
-        } else {
-
-            showToast(
-                "Error",
-                "Failed to process payment.",
-                "error"
-            );
+        const response = await invoiceFetch(PAYMENT_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            throw new Error(await responseError(response, `Payment failed (HTTP ${response.status}).`));
         }
-
-    } catch (e) {
-
-        console.error(
-            "Payment Submission Error:",
-            e
-        );
-
-        showToast(
-            "Error",
-            "Network error while submitting payment.",
-            "error"
-        );
+        closePaymentModal();
+        showToast('Payment recorded', 'Payment processed successfully.');
+        await Promise.all([loadInvoices(), loadPayments()]);
+    } catch (error) {
+        console.error('Payment Submission Error:', error);
+        showToast('Payment Error', error.message || 'Unable to record payment.', 'error');
+    } finally {
+        button.disabled = false;
     }
 }
 
 
 async function loadPayments() {
-
     try {
-
-        const res =
-            await fetch(`${API_BASE}/payments`);
-
-        if (res.ok) {
-
-            const payments =
-                await res.json();
-
-            let totalRev = 0;
-
-            const tbody =
-                document.getElementById(
-                    'paymentsTableBody'
-                );
-
-            tbody.innerHTML = '';
-
-            payments.forEach(p => {
-
-                totalRev += p.amountPaid;
-
-                tbody.innerHTML += `
-
-                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">
-
-                        <td class="py-3.5 px-6 font-bold text-indigo-600">
-                            #PAY-${p.id}
-                        </td>
-
-                        <td class="py-3.5 px-6 text-slate-600">
-                            #INV-${
-                                p.invoice
-                                    ? p.invoice.id
-                                    : p.invoiceId
-                            }
-                        </td>
-
-                        <td class="py-3.5 px-6 font-bold text-emerald-600">
-                            ₹${(p.amountPaid || 0).toFixed(2)}
-                        </td>
-
-                        <td class="py-3.5 px-6">
-
-                            <span class="bg-indigo-50 text-indigo-700 font-semibold text-xs px-2.5 py-1 rounded-md border border-indigo-100">
-
-                                ${p.paymentMode}
-
-                            </span>
-
-                        </td>
-
-                        <td class="py-3.5 px-6 text-slate-500">
-                            ${p.paymentDate || 'Today'}
-                        </td>
-
-                    </tr>
-                `;
-            });
-
-            document.getElementById(
-                'stat-revenue'
-            ).innerText =
-                `₹${totalRev.toFixed(2)}`;
+        const response = await invoiceFetch(PAYMENT_API);
+        if (!response.ok) {
+            throw new Error(await responseError(response, `Payment history failed (HTTP ${response.status}).`));
         }
-
-    } catch (e) {
-
-        console.error(
-            "Payments Fetch Error:",
-            e
-        );
+        const payments = await response.json();
+        const tbody = document.getElementById('paymentsTableBody');
+        tbody.replaceChildren();
+        let totalRevenue = 0;
+        payments.forEach(payment => {
+            totalRevenue += Number(payment.amount || 0);
+            const row = document.createElement('tr');
+            row.className = 'border-b border-slate-100 transition hover:bg-slate-50';
+            [
+                `#PAY-${payment.id}`,
+                `#${payment.invoiceId}`,
+                `₹${Number(payment.amount || 0).toFixed(2)}`,
+                payment.paymentMode,
+                payment.paymentDate || '—'
+            ].forEach(value => {
+                const cell = document.createElement('td');
+                cell.className = 'px-6 py-3.5 text-slate-600';
+                cell.textContent = String(value ?? '—');
+                row.appendChild(cell);
+            });
+            tbody.appendChild(row);
+        });
+        document.getElementById('stat-revenue').innerText = `₹${totalRevenue.toFixed(2)}`;
+    } catch (error) {
+        console.error('Payments Fetch Error:', error);
     }
 }
 
@@ -3091,7 +2920,8 @@ async function loadPayments() {
 document.addEventListener(
     "DOMContentLoaded",
     function () {
-
+        localStorage.removeItem('ims_session_user');
+        localStorage.removeItem('ims_registered_users');
         enforceSessionGuard();
 
     }

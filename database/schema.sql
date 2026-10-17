@@ -5,8 +5,9 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(255),
-    username VARCHAR(255)
-);
+    username VARCHAR(255),
+    CONSTRAINT uk_users_username UNIQUE (username)
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS subzones (
     subzone_id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -102,8 +103,30 @@ CREATE TABLE IF NOT EXISTS invoices (
     total_amount DOUBLE,
     status VARCHAR(255),
     invoice_date DATE,
+    invoice_number VARCHAR(32) NULL,
+    estimate_id BIGINT NULL,
+    company_name_snapshot VARCHAR(255) NULL,
+    company_gstn_no_snapshot VARCHAR(15) NULL,
+    customer_name_snapshot VARCHAR(255) NULL,
+    customer_organization_snapshot VARCHAR(255) NULL,
+    client_email VARCHAR(320) NULL,
+    service_description VARCHAR(255) NULL,
+    quantity INT NULL,
+    unit_price_decimal DECIMAL(15, 2) NULL,
+    taxable_amount_decimal DECIMAL(15, 2) NULL,
+    gst_rate_decimal DECIMAL(5, 4) NULL,
+    gst_amount_decimal DECIMAL(15, 2) NULL,
+    total_amount_decimal DECIMAL(15, 2) NULL,
+    service_date DATE NULL,
+    delivery_details VARCHAR(1000) NULL,
+    payment_instructions VARCHAR(500) NULL,
+    CONSTRAINT uk_invoice_number UNIQUE (invoice_number),
+    CONSTRAINT uk_invoice_estimate UNIQUE (estimate_id),
+    INDEX idx_invoices_status_date (status, invoice_date),
+    CONSTRAINT fk_invoice_estimate FOREIGN KEY (estimate_id) REFERENCES estimates(estimate_id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
     FOREIGN KEY (client_id) REFERENCES clients(id)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS payments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -111,5 +134,9 @@ CREATE TABLE IF NOT EXISTS payments (
     amount_paid DOUBLE,
     payment_date DATE,
     payment_mode VARCHAR(255),
+    amount_paid_decimal DECIMAL(15, 2) NULL,
+    idempotency_key VARCHAR(64) NULL,
+    CONSTRAINT uk_payment_idempotency_key UNIQUE (idempotency_key),
+    INDEX idx_payments_invoice_date (invoice_id, payment_date),
     FOREIGN KEY (invoice_id) REFERENCES invoices(id)
-);
+) ENGINE=InnoDB;

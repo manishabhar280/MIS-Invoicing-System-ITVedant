@@ -11,10 +11,10 @@ public class User {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "username", length = 255)
+    @Column(name = "username", length = 255, unique = true)
     private String username;
 
-    @Column(name = "password_hash", length = 255)
+    @Column(name = "password_hash", length = 255, nullable = false)
     private String passwordHash;
 
     @Column(name = "role", length = 255)

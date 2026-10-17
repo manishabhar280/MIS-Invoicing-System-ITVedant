@@ -1,9 +1,10 @@
 package com.codeb.ims.controller;
 
-import com.codeb.ims.dto.PaymentDTO;
-import com.codeb.ims.entity.Payment;
+import com.codeb.ims.dto.CreatePaymentRequestDTO;
+import com.codeb.ims.dto.PaymentResponseDTO;
 import com.codeb.ims.service.PaymentService;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,17 +14,19 @@ import java.util.List;
 @RequestMapping("/api/v1/payments")
 @CrossOrigin(origins = "*")
 public class PaymentController {
+    private final PaymentService paymentService;
 
-    @Autowired
-    private PaymentService paymentService;
+    public PaymentController(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
 
     @PostMapping
-    public ResponseEntity<Payment> recordPayment(@RequestBody PaymentDTO dto) {
-        return ResponseEntity.ok(paymentService.recordPayment(dto));
+    public ResponseEntity<PaymentResponseDTO> recordPayment(@Valid @RequestBody CreatePaymentRequestDTO request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.recordPayment(request));
     }
 
     @GetMapping
-    public ResponseEntity<List<Payment>> getAllPayments() {
+    public ResponseEntity<List<PaymentResponseDTO>> getAllPayments() {
         return ResponseEntity.ok(paymentService.getAllPayments());
     }
 }

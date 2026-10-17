@@ -9,6 +9,29 @@ target/
 .env
 .env.*
 !.env.example
+application-local.properties
+application-secrets.properties
+secrets/
+credentials/
+*.secret
+*.credentials
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+
+# Local database backups and exports (keep schema and migration SQL tracked)
+database/backups/
+database/dumps/
+*backup*.sql
+*_dump.sql
+dump.sql
+export.sql
+ims_db*.sql
+*.sql.gz
+*.dump
+*.sql.bak
 
 # IDE
 .vscode/
